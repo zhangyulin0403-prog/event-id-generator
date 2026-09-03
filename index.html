@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>埋点事件ID生成器</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #eef2ff;
+  --border: #e0e0e0;
+  --text: #1f2937;
+  --text-secondary: #6b7280;
+  --success: #10b981;
+  --success-light: #ecfdf5;
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --danger: #ef4444;
+  --danger-light: #fef2f2;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.10);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  padding: 20px;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
+.subtitle { color: var(--text-secondary); margin-bottom: 30px; font-size: 14px; }
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.step-num {
+  display: inline-flex;
+  width: 28px; height: 28px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 50%;
+  align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+  margin-right: 10px;
+}
+.step-title { font-size: 18px; font-weight: 600; }
+.step-header { display: flex; align-items: center; margin-bottom: 16px; }
+.hint { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
+textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 13px;
+  resize: vertical;
+  transition: border-color 0.2s;
+  line-height: 1.5;
+}
+textarea:focus { outline: none; border-color: var(--primary); }
+.input-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+input[type="text"] {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+input[type="text"]:focus { outline: none; border-color: var(--primary); }
+.btn {
+  display: inline-flex;
+  align-items: center; gap: 6px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { background: #c7c7c7; cursor: not-allowed; transform: none; }
+.btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+.parsed-info {
+  background: var(--primary-light);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--primary);
+  margin-top: 12px;
+  display: none;
+}
+.parsed-info.show { display: block; }
+.parsed-info.has-warn { background: var(--warning-light); color: var(--warning); }
+.result-actions {
+  display: flex; gap: 10px; margin-bottom: 16px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th, td {
+  border: 1px solid #e5e7eb;
+  padding: 7px 12px;
+  text-align: left;
+}
+th {
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  white-space: nowrap;
+}
+td { vertical-align: top; }
+tr:hover { background: #f8fafc; }
+.table-wrap {
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 600px;
+  border: 1px solid #e5e7eb;
+}
+.dup-warn {
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: none;
+}
+.dup-warn.show { display: block; }
+.col-new-1 { background: #f0fdf4; font-weight: 500; }
+.col-new-2 { background: #f0fdf4; }
+.toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1f2937;
+  color: #fff;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.3s, opacity 0.3s;
+  opacity: 0;
+  z-index: 999;
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.feature::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-success { background: var(--success-light); color: var(--success); }
+.badge-warn { background: var(--warning-light); color: var(--warning); }
+.badge-danger { background: var(--danger-light); color: var(--danger); }
+#resultSection { display: none; }
+#resultSection.show { display: block; }
+.footer {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-top: 30px;
+  padding: 20px 0;
+}
+.loading {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid #c7c7c7;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>埋点事件ID生成器</h1>
+  <p class="subtitle">粘贴现有项目参数 → 输入新项目代号 → 自动生成不重复的事件ID</p>
+
+  <div class="card">
+    <div class="step-header">
+      <span class="step-num">1</span><span class="step-title">粘贴现有项目数据</span>
+    </div>
+    <p class="hint">从 Excel 选中所有数据列（含表头），Ctrl+C 复制，然后 Ctrl+V 粘贴到下方文本框。格式：每列用 Tab 分隔，每行用换行分隔。</p>
+    <textarea id="inputData" placeholder="示例：
+埋点说明	R331	R331二级	R329	R329二级
+判断为Organic自然量用户	NativeUserTrack		OrganicUserRoute	
+新用户开屏页曝光	IntroTrack	IntroTrackSplashView	OnboardRoute	OnboardRouteSplashView"></textarea>
+    <div class="parsed-info" id="parsedInfo"></div>
+    <div class="features">
+      <div class="feature">自动识别版本列</div>
+      <div class="feature">智能同义词替换</div>
+      <div class="feature">全局重复检测</div>
+      <div class="feature">一级/二级联动生成</div>
+      <div class="feature">一键复制/下载Excel</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step-header">
+      <span class="step-num">2</span><span class="step-title">设置并生成</span>
+    </div>
+    <div class="input-row" style="margin-bottom:16px;">
+      <label style="font-weight:600;">新项目代号：</label>
+      <input type="text" id="newCode" placeholder="如：R333" value="R333" style="width:120px;">
+      <span style="color:var(--text-secondary);font-size:13px;">将作为新列的表头名称</span>
+    </div>
+    <div class="input-row">
+      <button class="btn btn-primary" id="generateBtn">生成事件ID</button>
+      <button class="btn btn-outline" id="loadSampleBtn">加载示例数据</button>
+      <button class="btn btn-outline" id="clearBtn">清空</button>
+    </div>
+  </div>
+
+  <div id="resultSection">
+    <div class="card">
+      <div class="step-header">
+        <span class="step-num">3</span><span class="step-title">生成结果</span>
+      </div>
+      <div class="dup-warn" id="dupWarn"></div>
+      <div class="result-actions">
+        <button class="btn btn-primary" id="copyBtn">复制结果到剪贴板</button>
+        <button class="btn btn-outline" id="downloadBtn">下载 Excel 文件</button>
+        <span id="genStats" style="color:var(--text-secondary);font-size:13px;align-self:center;"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="resultTable"></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    埋点事件ID生成器 v1.0 — 自动化命名模式检测 + 同义词替换 + 重复校验
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 同义词词典 — 覆盖埋点命名常见词汇
+// ============================================================
+const SYNONYMS = {
+  // 用户类型
+  'Natural': ['Organic', 'Native', 'Genuine', 'Raw', 'Indigenous', 'Wild'],
+  'Organic': ['Native', 'Genuine', 'Raw', 'Indigenous', 'Natural', 'Wild'],
+  'Native': ['Genuine', 'Raw', 'Indigenous', 'Natural', 'Organic', 'Inborn'],
+  'Acquired': ['Campaign', 'Promo', 'Sponsored', 'Purchased', 'Attributed', 'Buyer'],
+  'Campaign': ['Promo', 'Sponsored', 'Purchased', 'Attributed', 'Acquired', 'Advertised'],
+  'Promo': ['Sponsored', 'Purchased', 'Attributed', 'Acquired', 'Campaign', 'Marketing'],
+  // 配置
+  'Remote': ['Cloud', 'Distant', 'Server', 'Web', 'Online', 'Offsite'],
+  'Cloud': ['Distant', 'Server', 'Web', 'Online', 'Remote', 'Virtual'],
+  // 引导/开屏
+  'Onboard': ['Intro', 'Init', 'Start', 'Begin', 'Welcome', 'Launch'],
+  'Intro': ['Init', 'Start', 'Begin', 'Welcome', 'Onboard', 'Launch'],
+  // 首页
+  'Home': ['Main', 'Prime', 'Core', 'Base', 'Hub', 'Center'],
+  'Main': ['Prime', 'Core', 'Base', 'Hub', 'Home', 'Center'],
+  // 完成
+  'Complete': ['Finish', 'End', 'Result', 'Close', 'Final', 'Done'],
+  'Finish': ['End', 'Result', 'Close', 'Final', 'Complete', 'Done'],
+  // 快捷
+  'Shortcut': ['Quick', 'Fast', 'Rapid', 'Swift', 'Direct', 'Express'],
+  'Quick': ['Fast', 'Rapid', 'Swift', 'Direct', 'Express', 'Shortcut'],
+  // 权限
+  'Grant': ['Permit', 'Consent', 'Authorize', 'Allow', 'Approve', 'License'],
+  'Permit': ['Consent', 'Authorize', 'Allow', 'Approve', 'Grant', 'License'],
+  // 推送
+  'Push': ['FCM', 'Message', 'Msg', 'Notification', 'Dispatch', 'Send'],
+  'FCM': ['Push', 'Message', 'Msg', 'Notification', 'Dispatch', 'Send'],
+  // 固定通知
+  'Pinned': ['Fixed', 'Static', 'Constant', 'Locked', 'Anchored', 'Set'],
+  'Fixed': ['Static', 'Constant', 'Locked', 'Anchored', 'Pinned', 'Set'],
+  // 自适应通知
+  'Adaptive': ['Flex', 'Fluid', 'Flexible', 'Dynamic', 'Adjustable', 'Elastic'],
+  'Flex': ['Fluid', 'Flexible', 'Dynamic', 'Adjustable', 'Adaptive', 'Elastic'],
+  // 清理
+  'Clean': ['Sweep', 'Purge', 'Wash', 'Scrub', 'Clear', 'Sanitize'],
+  'Sweep': ['Purge', 'Wash', 'Scrub', 'Clear', 'Clean', 'Sanitize'],
+  // 网络/数据
+  'Data': ['Net', 'Network', 'Traffic', 'Usage', 'Info', 'Bandwidth'],
+  'Traffic': ['Data', 'Net', 'Network', 'Usage', 'Bandwidth', 'Flow'],
+  'Net': ['Data', 'Network', 'Traffic', 'Usage', 'Web', 'Online'],
+  // 通知
+  'Notice': ['Alert', 'Notification', 'Message', 'Notify', 'Signal', 'Banner'],
+  'Alert': ['Notice', 'Notification', 'Message', 'Notify', 'Signal', 'Banner'],
+  // App管理
+  'App': ['Apps', 'Application', 'Program', 'Software', 'Tool'],
+  'Apps': ['App', 'Application', 'Program', 'Software', 'Tool'],
+  'Manage': ['Sort', 'Order', 'Organize', 'Arrange', 'Handle', 'Control'],
+  'Sort': ['Order', 'Organize', 'Arrange', 'Manage', 'Handle', 'Control'],
+  // 截图
+  'Capture': ['Screenshot', 'Snap', 'Shot', 'Screen', 'Grab', 'Snip'],
+  'Screenshot': ['Capture', 'Snap', 'Shot', 'Screen', 'Grab', 'Snip'],
+  'Snap': ['Capture', 'Screenshot', 'Shot', 'Screen', 'Grab', 'Snip'],
+  // 大文件
+  'Bulk': ['Heavy', 'Large', 'Big', 'Massive', 'Giant', 'Huge'],
+  'Heavy': ['Large', 'Big', 'Massive', 'Giant', 'Huge', 'Bulk'],
+  'Large': ['Heavy', 'Big', 'Massive', 'Giant', 'Huge', 'Bulk'],
+  // 图片
+  'Photo': ['Pic', 'Image', 'Gallery', 'Picture', 'Graphic'],
+  'Pic': ['Image', 'Gallery', 'Picture', 'Graphic', 'Photo'],
+  'Gallery': ['Photo', 'Pic', 'Image', 'Picture', 'Graphic'],
+  // 重复
+  'Twin': ['Dup', 'Duplicate', 'Double', 'Pair', 'Match', 'Clone'],
+  'Dup': ['Twin', 'Duplicate', 'Double', 'Pair', 'Match', 'Clone'],
+  // 视频
+  'Video': ['Clip', 'Media', 'Movie', 'Film', 'Footage'],
+  'Clip': ['Video', 'Media', 'Movie', 'Film', 'Footage'],
+  'Media': ['Video', 'Clip', 'Movie', 'Film', 'Footage'],
+  // 进程/内存
+  'Process': ['RAM', 'Memory', 'Mem', 'Boost', 'Runtime'],
+  'Ram': ['Memory', 'Mem', 'Boost', 'Process', 'Runtime'],
+  'RamBoost': ['MemBoost', 'MemoryBoost', 'ProcessBoost', 'RuntimeBoost'],
+  // 设备
+  'Device': ['Hardware', 'System', 'Gadget', 'Machine', 'Appliance'],
+  'Hardware': ['Device', 'System', 'Gadget', 'Machine', 'Appliance'],
+  'Inspect': ['Check', 'Scan', 'Audit', 'Examine', 'Diagnose'],
+  'Check': ['Inspect', 'Scan', 'Audit', 'Examine', 'Diagnose'],
+  // 电池
+  'Battery': ['Power', 'Energy', 'Stats', 'Charge', 'Cell'],
+  'Power': ['Battery', 'Energy', 'Stats', 'Charge', 'Cell'],
+  // 速度
+  'Speed': ['Rate', 'Fast', 'Quick', 'Velocity', 'Pace'],
+  'Rate': ['Speed', 'Fast', 'Quick', 'Velocity', 'Pace'],
+  // 动作
+  'View': ['Display', 'Show', 'Render', 'Present', 'Appear'],
+  'Show': ['Display', 'Render', 'Present', 'Appear', 'View'],
+  'Tap': ['Click', 'Press', 'Touch', 'Hit', 'Select'],
+  'Click': ['Tap', 'Press', 'Touch', 'Hit', 'Select'],
+  'Jump': ['Go', 'Navigate', 'Redirect', 'Link', 'Transfer'],
+  'Done': ['Complete', 'Finish', 'Success', 'End', 'Ready'],
+  'Ask': ['Request', 'Query', 'Prompt', 'Inquire', 'Seek'],
+  'Back': ['Return', 'Previous', 'Revert', 'Undo'],
+  // 开屏/启动
+  'Splash': ['Launch', 'Boot', 'Start', 'Open', 'Init'],
+  'Start': ['Begin', 'Init', 'Launch', 'Commence', 'Kickoff'],
+  // 权限相关
+  'AllFiles': ['FullAccess', 'TotalAccess', 'CompleteAccess'],
+  'Notice': ['Alert', 'Notification', 'Message', 'Notify', 'Signal'],
+  // 广告
+  'Ad': ['Promo', 'Advert', 'Commercial', 'Spot'],
+  // 其他常见
+  'Gate': ['Guard', 'Check', 'Filter', 'Screen', 'Portal'],
+  'Pass': ['Allow', 'Permit', 'Grant', 'Admit', 'Enter'],
+  'Bubble': ['Popup', 'Toast', 'Tip', 'Hint', 'Float'],
+  'Widget': ['Gadget', 'Component', 'Module', 'Plugin'],
+  'Ring': ['Circle', 'Loop', 'Round', 'Dial'],
+  'One': ['Single', 'Solo', 'Only', 'Once'],
+  'Cache': ['Buffer', 'Temp', 'Cookie', 'Storage'],
+  'Traffic': ['Data', 'Net', 'Network', 'Usage'],
+  'PowerInfo': ['BatteryInfo', 'EnergyInfo', 'ChargeInfo'],
+  'InspectScan': ['DeviceScan', 'HardwareScan', 'SystemScan'],
+  'AppsManage': ['AppManage', 'AppsOrganize', 'AppSort'],
+  'TwinGallery': ['DuplicateGallery', 'MatchGallery', 'PairGallery'],
+  'MediaClean': ['VideoClean', 'ClipClean', 'MovieClean'],
+  'OneClean': ['SingleClean', 'SoloClean', 'OnceClean'],
+  'NoticeClean': ['AlertClean', 'NotificationClean', 'MessageClean'],
+  'LargeFile': ['BigFile', 'HeavyFile', 'BulkFile', 'GiantFile'],
+  'SpeedTest': ['RateTest', 'FastTest', 'VelocityTest'],
+  'DeviceScan': ['HardwareScan', 'SystemScan', 'InspectScan'],
+  'BatteryInfo': ['PowerInfo', 'EnergyInfo', 'ChargeInfo'],
+  'AllFilesAsk': ['FullAccessAsk', 'TotalAccessAsk'],
+  'AllFilesDone': ['FullAccessDone', 'TotalAccessDone'],
+};
+
+// 后缀轮转池 — 按顺序使用
+const SUFFIX_POOL = ['Trace', 'Log', 'Trail', 'Path', 'Journey', 'Stream', 'Pulse', 'Scope', 'Signal', 'Mark', 'Record', 'Link', 'Bridge', 'Channel', 'Beat'];
+
+// 一级后缀池（用于替换 Flow/Route/Track 等）
+const PRIMARY_SUFFIXES = ['Trace', 'Log', 'Trail', 'Path', 'Journey', 'Stream', 'Pulse', 'Scope', 'Signal', 'Mark'];
+
+// ============================================================
+// 工具函数
+// ============================================================
+
+// 清理生成的事件ID：去除引号、不可见字符等
+function sanitizeID(str) {
+  if (!str) return '';
+  return str
+    .replace(/["'`\u201C\u201D\u2018\u2019]/g, '') // 各种引号
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')         // 零宽字符
+    .replace(/\s+/g, '')                            // 空白
+    .trim();
+}
+
+// camelCase 分词: "NativeUserTrack" -> ["Native", "User", "Track"]
+function tokenize(str) {
+  if (!str) return [];
+  str = sanitizeID(str);
+  // 处理全小写或混合
+  const parts = str.replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(/\s+/)
+    .filter(s => s.length > 0);
+  return parts;
+}
+
+// 重组: ["Native", "User", "Track"] -> "NativeUserTrack"
+function detokenize(tokens) {
+  return tokens.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('');
+}
+
+// 检查是否为camelCase事件名（包含大写字母，长度>4）
+function isEventName(str) {
+  if (!str || str.length < 4) return false;
+  if (str.includes(',') || str.includes(' ') || str.includes('/')) return false;
+  if (str === '无' || str === '/') return false;
+  if (/^\d+$/.test(str)) return false; // 纯数字
+  if (/^[a-z0-9]{1,4}$/.test(str)) return false; // 太短的缩写
+  // 检测是否有大写字母在非首位置
+  return /[a-z][A-Z]/.test(str) || /^[A-Z][a-z]+[A-Z]/.test(str);
+}
+
+// 检查是否为短缩写（全局配置参数）
+function isAbbreviation(str) {
+  if (!str) return false;
+  if (str.length > 20) return false;
+  if (str.includes(',') || str.includes(' ')) return false;
+  if (str === '无' || str === '/') return false;
+  if (/^[a-z]+$/i.test(str) && str.length <= 12 && !isEventName(str)) return true; // 纯字母短串
+  if (/_/.test(str)) return true; // 含下划线
+  if (/^[a-z]{2,}/.test(str) && str.length <= 15) return true; // 小写开头
+  return false;
+}
+
+// 检查是否为特殊值
+function isSpecial(str) {
+  if (!str) return true;
+  const s = str.trim();
+  return s === '' || s === '无' || s === '/' || s === 'scene_name' || /^[a-z]\d,/.test(s) || s.startsWith('a1,');
+}
+
+// 获取同义词列表
+function getSynonyms(word) {
+  const w = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  const lower = word.toLowerCase();
+  // 精确匹配
+  if (SYNONYMS[w]) return SYNONYMS[w];
+  if (SYNONYMS[word]) return SYNONYMS[word];
+  // 模糊匹配
+  for (const key in SYNONYMS) {
+    if (key.toLowerCase() === lower) return SYNONYMS[key];
+  }
+  return [];
+}
+
+// 生成下一个后缀
+function getNextSuffix(usedSuffixes) {
+  for (const s of SUFFIX_POOL) {
+    if (!usedSuffixes.has(s)) return s;
+  }
+  // 如果都用完了，用 Trace + 数字
+  return 'Trace' + (Math.floor(Math.random() * 90) + 10);
+}
+
+// 收集已使用的后缀
+function collectUsedSuffixes(values) {
+  const used = new Set();
+  for (const v of values) {
+    if (!v) continue;
+    const tokens = tokenize(v);
+    if (tokens.length > 0) {
+      const last = tokens[tokens.length - 1];
+      if (last.length > 2) used.add(last);
+    }
+  }
+  return used;
+}
+
+// 短缩写变换 — 字母替换
+function transformAbbreviation(str, existingSet) {
+  if (!str) return str;
+  // 下划线风格 (如 ps_fb_gy -> cx_fb_attr)
+  if (str.includes('_')) {
+    const parts = str.split('_');
+    const newParts = parts.map((p, i) => {
+      if (i === 0) {
+        // 替换前缀
+        const prefixes = ['cx', 'dx', 'ex', 'fx', 'gx', 'hx', 'tx', 'nx', 'px', 'rx'];
+        for (const pre of prefixes) {
+          if (pre !== p) {
+            // 尝试替换
+            const candidate = pre + parts.slice(1).join('_');
+            if (!existingSet.has(candidate) && candidate !== str) return pre;
+          }
+        }
+        return 'cx';
+      }
+      return p;
+    });
+    return newParts.join('_');
+  }
+  
+  // 纯小写缩写 — 字母替换
+  const replacements = [
+    ['a', 'e'], ['e', 'i'], ['i', 'o'], ['o', 'u'], ['u', 'a'],
+    ['s', 'z'], ['t', 'd'], ['r', 't'], ['n', 'm'], ['l', 'r'],
+    ['p', 'b'], ['f', 'v'], ['w', 'v'],
+  ];
+  
+  // 尝试替换元音
+  let result = str;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const idx = attempt % replacements.length;
+    const [from, to] = replacements[idx];
+    if (result.includes(from)) {
+      result = result.replace(from, to);
+      if (result !== str && !existingSet.has(result)) return result;
+    }
+  }
+  
+  // 如果还是重复，尝试在中间插入字母
+  const midIdx = Math.floor(str.length / 2);
+  for (const c of 'aeiouxyz') {
+    const candidate = str.slice(0, midIdx) + c + str.slice(midIdx);
+    if (!existingSet.has(candidate) && candidate !== str) return candidate;
+  }
+  
+  // 最后手段：添加后缀
+  for (let i = 1; i <= 99; i++) {
+    const candidate = str + i;
+    if (!existingSet.has(candidate)) return candidate;
+  }
+  return str + '_new';
+}
+
+// 生成随机 codetoken
+function generateCodeToken(existingSet) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  for (let attempt = 0; attempt < 100; attempt++) {
+    let token = '';
+    for (let i = 0; i < 6; i++) {
+      token += chars[Math.floor(Math.random() * chars.length)];
+    }
+    if (!existingSet.has(token)) return token;
+  }
+  return 'new' + Math.random().toString(36).slice(2, 5);
+}
+
+// ============================================================
+// 核心生成逻辑
+// ============================================================
+
+function generateEventID(rowValues, allExistingSet, context) {
+  // rowValues: [{value: "NativeUserTrack", col: 0, type: 'l1'}, ...]
+  // context: { lastNewL1, lastOldL1 } — 上一个有一级ID的行生成的新/旧一级ID
+  // 获取所有非空值
+  const l1Values = rowValues.filter(v => v.type === 'l1' && v.value && !isSpecial(v.value)).map(v => v.value);
+  const l2Values = rowValues.filter(v => v.type === 'l2' && v.value && !isSpecial(v.value)).map(v => v.value);
+  
+  if (l1Values.length === 0) {
+    // 没有一级值，可能是一级为空的二级行（属于合并单元格的后续行）
+    if (l2Values.length > 0) {
+      // 使用上一个一级ID作为关联基准
+      const ctxNewL1 = context && context.lastNewL1 ? context.lastNewL1 : null;
+      const ctxOldL1 = context && context.lastOldL1 ? context.lastOldL1 : null;
+      return { l1: '', l2: generateSecondaryID(l2Values, allExistingSet, ctxNewL1, ctxOldL1) };
+    }
+    return { l1: '', l2: '' };
+  }
+  
+  // 取最近版本的一级值作为基础
+  const baseValue = l1Values[l1Values.length - 1];
+  
+  // 如果是缩写类型
+  if (isAbbreviation(baseValue) && !isEventName(baseValue)) {
+    const newL1 = transformAbbreviation(baseValue, allExistingSet);
+    return { l1: newL1, l2: '' };
+  }
+  
+  // 如果是事件名
+  if (isEventName(baseValue)) {
+    const newL1 = generatePrimaryEventID(l1Values, allExistingSet);
+    // 获取最近的旧一级值（作为替换前缀的基准）
+    const oldL1 = l1Values.length > 1 ? l1Values[l1Values.length - 2] : baseValue;
+    const newL2 = l2Values.length > 0
+      ? generateSecondaryID(l2Values, allExistingSet, newL1, oldL1)
+      : '';
+    return { l1: newL1, l2: newL2 };
+  }
+  
+  // 其他类型：尝试缩写变换
+  if (baseValue && !isSpecial(baseValue)) {
+    return { l1: transformAbbreviation(baseValue, allExistingSet), l2: '' };
+  }
+  
+  return { l1: '', l2: '' };
+}
+
+function generatePrimaryEventID(existingValues, allExistingSet) {
+  const baseValue = existingValues[existingValues.length - 1];
+  const tokens = tokenize(baseValue);
+  
+  if (tokens.length === 0) return baseValue;
+  
+  // 收集已使用的后缀
+  const usedSuffixes = collectUsedSuffixes(existingValues);
+  
+  // 策略1: 替换后缀 + 替换前缀
+  for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
+    const newSuffix = SUFFIX_POOL[suffixIdx];
+    
+    // 替换第一个token（前缀）
+    const firstToken = tokens[0];
+    const firstSynonyms = getSynonyms(firstToken);
+    
+    for (const syn of firstSynonyms) {
+      const newTokens = [...tokens];
+      newTokens[0] = syn;
+      // 替换最后一个token（后缀）
+      if (tokens.length > 1) {
+        newTokens[newTokens.length - 1] = newSuffix;
+      }
+      const candidate = detokenize(newTokens);
+      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+        return candidate;
+      }
+    }
+    
+    // 也尝试只替换后缀
+    if (tokens.length > 1) {
+      const newTokens = [...tokens];
+      newTokens[newTokens.length - 1] = newSuffix;
+      const candidate = detokenize(newTokens);
+      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+        return candidate;
+      }
+    }
+  }
+  
+  // 策略2: 替换多个token
+  for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
+    const newSuffix = SUFFIX_POOL[suffixIdx];
+    const newTokens = [...tokens];
+    
+    // 替换所有有同义词的token
+    for (let i = 0; i < newTokens.length; i++) {
+      const syns = getSynonyms(newTokens[i]);
+      if (syns.length > 0) {
+        newTokens[i] = syns[Math.floor(Math.random() * syns.length)];
+      }
+    }
+    // 替换后缀
+    if (newTokens.length > 1) {
+      newTokens[newTokens.length - 1] = newSuffix;
+    }
+    const candidate = detokenize(newTokens);
+    if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+      return candidate;
+    }
+  }
+  
+  // 策略3: 使用后缀池 + 随机组合
+  for (let i = 0; i < 200; i++) {
+    const newTokens = [...tokens];
+    // 随机替换
+    for (let j = 0; j < newTokens.length; j++) {
+      const syns = getSynonyms(newTokens[j]);
+      if (syns.length > 0 && Math.random() > 0.3) {
+        newTokens[j] = syns[Math.floor(Math.random() * syns.length)];
+      }
+    }
+    // 添加/替换后缀
+    const newSuffix = SUFFIX_POOL[Math.floor(Math.random() * SUFFIX_POOL.length)];
+    if (newTokens.length > 1) {
+      newTokens[newTokens.length - 1] = newSuffix;
+    } else {
+      newTokens.push(newSuffix);
+    }
+    const candidate = detokenize(newTokens);
+    if (!allExistingSet.has(candidate)) {
+      return candidate;
+    }
+  }
+  
+  // 最终兜底：添加数字后缀
+  for (let i = 1; i <= 99; i++) {
+    const candidate = baseValue + 'V' + i;
+    if (!allExistingSet.has(candidate)) return candidate;
+  }
+  
+  return baseValue + '_gen';
+}
+
+function generateSecondaryID(existingValues, allExistingSet, newL1, oldL1) {
+  if (existingValues.length === 0) return '';
+  const baseValue = existingValues[existingValues.length - 1];
+  
+  // 如果是content_type列表 (如 "a1,a2,a3,...")
+  if (baseValue.startsWith('a1,') || baseValue.includes(',a2,')) {
+    return baseValue; // 保持不变
+  }
+  
+  // 如果是事件名
+  if (isEventName(baseValue)) {
+    const tokens = tokenize(baseValue);
+    
+    // 策略1: 如果有新一级和旧一级，直接替换前缀
+    if (newL1 && oldL1 && baseValue.startsWith(oldL1)) {
+      const suffix = baseValue.substring(oldL1.length);
+      // 去掉旧后缀中可能的 Core
+      const candidate = newL1 + suffix;
+      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+        return candidate;
+      }
+    }
+    
+    // 策略2: 用新一级 + 旧二级的动作部分
+    if (newL1) {
+      // 尝试用新一级替换前几个token
+      const newL1Tokens = tokenize(newL1);
+      // 找到二级中与一级匹配的前缀长度
+      let matchLen = 0;
+      for (let i = 0; i < Math.min(tokens.length, newL1Tokens.length); i++) {
+        // 模糊匹配（同义词也算匹配）
+        const t = tokens[i].toLowerCase();
+        const nt = newL1Tokens[i].toLowerCase();
+        if (t === nt) {
+          matchLen = i + 1;
+        } else {
+          // 检查是否是同义词
+          const syns = getSynonyms(tokens[i]);
+          if (syns.includes(newL1Tokens[i]) || getSynonyms(newL1Tokens[i]).includes(tokens[i])) {
+            matchLen = i + 1;
+          } else {
+            break;
+          }
+        }
+      }
+      if (matchLen > 0) {
+        const remainingTokens = tokens.slice(matchLen);
+        const candidate = newL1 + remainingTokens.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('');
+        if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+          return candidate;
+        }
+      }
+      // 新一级 + 最后一个token
+      if (tokens.length > 0) {
+        const lastToken = tokens[tokens.length - 1];
+        const candidate = newL1 + lastToken;
+        if (!allExistingSet.has(candidate)) return candidate;
+      }
+    }
+    
+    // 策略3: 同义词替换
+    for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
+      const newSuffix = SUFFIX_POOL[suffixIdx];
+      const newTokens = [...tokens];
+      if (tokens.length > 1) {
+        const firstSyns = getSynonyms(tokens[0]);
+        for (const syn of firstSyns) {
+          newTokens[0] = syn;
+          const candidate = detokenize(newTokens);
+          if (!allExistingSet.has(candidate) && candidate !== baseValue) return candidate;
+        }
+      }
+    }
+    
+    // 策略4: 随机尝试
+    for (let i = 0; i < 200; i++) {
+      const newTokens = [...tokens];
+      for (let j = 0; j < newTokens.length; j++) {
+        const syns = getSynonyms(newTokens[j]);
+        if (syns.length > 0 && Math.random() > 0.3) {
+          newTokens[j] = syns[Math.floor(Math.random() * syns.length)];
+        }
+      }
+      const candidate = detokenize(newTokens);
+      if (!allExistingSet.has(candidate)) return candidate;
+    }
+  }
+  
+  // 缩写类型
+  if (isAbbreviation(baseValue)) {
+    return transformAbbreviation(baseValue, allExistingSet);
+  }
+  
+  return baseValue;
+}
+
+// ============================================================
+// 数据解析
+// ============================================================
+
+// 清理单元格值：去除Excel复制时自动添加的包裹引号
+// 处理: "value" → value, "value""inner" → value"inner, 空白清理
+function cleanCell(raw) {
+  if (!raw) return '';
+  let s = raw.trim();
+  if (!s) return '';
+  // 去除首尾包裹的引号（Excel对含特殊字符的单元格会加引号）
+  if (s.length >= 2 && s.charAt(0) === '"' && s.charAt(s.length - 1) === '"') {
+    s = s.substring(1, s.length - 1);
+    // Excel内部用双引号转义引号: "" → "
+    s = s.replace(/""/g, '"');
+  }
+  // 去除可能残留的孤立引号和不可见字符
+  s = s.replace(/\u201C/g, '').replace(/\u201D/g, ''); // 中文引号
+  s = s.replace(/[\u200B-\u200D\uFEFF]/g, ''); // 零宽字符
+  s = s.trim();
+  return s;
+}
+
+// 智能分割一行文本为单元格数组（支持带引号的Tab分隔）
+function splitTabLine(line) {
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+        current += '""';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+        current += ch;
+      }
+    } else if (ch === '\t' && !inQuotes) {
+      cells.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current);
+  return cells.map(c => cleanCell(c));
+}
+
+function parseData(text) {
+  // 去除BOM和首尾空白
+  let t = text.replace(/^\uFEFF/, '').trim();
+  // 统一换行符
+  t = t.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = t.split('\n').filter(l => l.trim());
+  if (lines.length < 2) return null;
+  
+  // 解析表头
+  const headers = splitTabLine(lines[0]);
+  
+  // 识别版本列对
+  // 格式: 一级列, 二级列 交替排列
+  // 第一个列是描述列
+  const versionPairs = [];
+  for (let i = 1; i < headers.length; i += 2) {
+    if (headers[i]) {
+      versionPairs.push({
+        l1Col: i,
+        l1Name: headers[i],
+        l2Col: i + 1 < headers.length ? i + 1 : -1,
+        l2Name: i + 1 < headers.length ? headers[i + 1] : '',
+      });
+    }
+  }
+  
+  // 解析数据行
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitTabLine(lines[i]);
+    const desc = cells[0] || '';
+    if (!desc && !cells.slice(1).some(c => c)) continue;
+    
+    const row = { desc, versions: [] };
+    for (const pair of versionPairs) {
+      const l1Val = cells[pair.l1Col] || '';
+      const l2Val = pair.l2Col >= 0 ? (cells[pair.l2Col] || '') : '';
+      row.versions.push({ l1: l1Val, l2: l2Val, name: pair.l1Name });
+    }
+    rows.push(row);
+  }
+  
+  return { headers, versionPairs, rows, totalCols: headers.length };
+}
+
+// ============================================================
+// 主生成函数
+// ============================================================
+
+function generate(parsedData, newCode) {
+  const { rows, versionPairs } = parsedData;
+  
+  // 收集所有现有值（清理引号等特殊字符）
+  const allExisting = new Set();
+  for (const row of rows) {
+    for (const v of row.versions) {
+      if (v.l1 && !isSpecial(v.l1)) allExisting.add(sanitizeID(v.l1));
+      if (v.l2 && !isSpecial(v.l2)) allExisting.add(sanitizeID(v.l2));
+    }
+  }
+  
+  // 也加入表头作为已有值
+  for (const pair of versionPairs) {
+    if (pair.l1Name) allExisting.add(pair.l1Name);
+    if (pair.l2Name) allExisting.add(pair.l2Name);
+  }
+  allExisting.add(newCode);
+  
+  const results = [];
+  let duplicateCount = 0;
+  
+  // 跟踪上一个有一级ID的行，用于合并单元格续行的二级ID生成
+  let genContext = { lastNewL1: null, lastOldL1: null };
+  
+  for (const row of rows) {
+    // 构建行值列表
+    const rowValues = [];
+    for (let i = 0; i < row.versions.length; i++) {
+      const v = row.versions[i];
+      rowValues.push({ value: v.l1, type: 'l1', versionIdx: i });
+      rowValues.push({ value: v.l2, type: 'l2', versionIdx: i });
+    }
+    
+    // 判断是否为特殊行
+    const desc = row.desc;
+    
+    // 全局配置参数标题行
+    if (desc === '全局配置参数' || desc === 'adjust上报埋点' || desc === '广告位+类型' || desc === 'scene_name') {
+      results.push({ desc, l1: '', l2: '', special: true });
+      // 特殊行重置上下文
+      genContext = { lastNewL1: null, lastOldL1: null };
+      continue;
+    }
+    
+    // 生成
+    const generated = generateEventID(rowValues, allExisting, genContext);
+    
+    // 如果这一行有一级ID，更新上下文（使用清理后的值）
+    if (generated.l1) {
+      // 获取旧一级基准值（清理后）
+      const l1Vals = rowValues.filter(v => v.type === 'l1' && v.value && !isSpecial(v.value)).map(v => sanitizeID(v.value));
+      const oldL1 = l1Vals.length > 1 ? l1Vals[l1Vals.length - 2] : l1Vals[l1Vals.length - 1];
+      genContext = { lastNewL1: sanitizeID(generated.l1), lastOldL1: oldL1 };
+    }
+    
+    // 最终清理：确保生成的ID不含引号/特殊字符
+    const cleanL1 = sanitizeID(generated.l1);
+    const cleanL2 = sanitizeID(generated.l2);
+    
+    // 检查重复
+    let isDup = false;
+    if (cleanL1 && allExisting.has(cleanL1)) {
+      isDup = true;
+      duplicateCount++;
+    }
+    if (cleanL2 && allExisting.has(cleanL2)) {
+      isDup = true;
+      duplicateCount++;
+    }
+    
+    // 添加到已使用集合
+    if (cleanL1) allExisting.add(cleanL1);
+    if (cleanL2) allExisting.add(cleanL2);
+    
+    results.push({ desc, l1: cleanL1, l2: cleanL2, isDup });
+  }
+  
+  return { results, duplicateCount, newCode };
+}
+
+// ============================================================
+// UI 交互
+// ============================================================
+
+const $input = document.getElementById('inputData');
+const $newCode = document.getElementById('newCode');
+const $generateBtn = document.getElementById('generateBtn');
+const $loadSampleBtn = document.getElementById('loadSampleBtn');
+const $clearBtn = document.getElementById('clearBtn');
+const $parsedInfo = document.getElementById('parsedInfo');
+const $resultSection = document.getElementById('resultSection');
+const $resultTable = document.getElementById('resultTable');
+const $copyBtn = document.getElementById('copyBtn');
+const $downloadBtn = document.getElementById('downloadBtn');
+const $dupWarn = document.getElementById('dupWarn');
+const $genStats = document.getElementById('genStats');
+const $toast = document.getElementById('toast');
+
+let currentResult = null;
+let currentParsed = null;
+
+function showToast(msg) {
+  $toast.textContent = msg;
+  $toast.classList.add('show');
+  setTimeout(() => $toast.classList.remove('show'), 2500);
+}
+
+// 解析预览
+$input.addEventListener('input', () => {
+  const text = $input.value.trim();
+  if (text.length < 10) {
+    $parsedInfo.classList.remove('show');
+    return;
+  }
+  const parsed = parseData(text);
+  if (!parsed) {
+    $parsedInfo.classList.add('show', 'has-warn');
+    $parsedInfo.textContent = '无法解析数据，请确保是正确的Excel复制格式（Tab分隔）';
+    return;
+  }
+  $parsedInfo.classList.remove('has-warn');
+  $parsedInfo.classList.add('show');
+  $parsedInfo.innerHTML = `已识别 <b>${parsed.versionPairs.length}</b> 个版本列对，<b>${parsed.rows.length}</b> 行数据。列: ${parsed.versionPairs.map(p => p.l1Name).join(' / ')}`;
+});
+
+// 生成
+$generateBtn.addEventListener('click', () => {
+  const text = $input.value.trim();
+  if (text.length < 10) {
+    showToast('请先粘贴数据');
+    return;
+  }
+  const newCode = $newCode.value.trim();
+  if (!newCode) {
+    showToast('请输入新项目代号');
+    return;
+  }
+  
+  $generateBtn.innerHTML = '<span class="loading"></span> 生成中...';
+  $generateBtn.disabled = true;
+  
+  setTimeout(() => {
+    try {
+      const parsed = parseData(text);
+      if (!parsed) {
+        showToast('数据格式有误，请检查');
+        return;
+      }
+      currentParsed = parsed;
+      
+      const { results, duplicateCount } = generate(parsed, newCode);
+      currentResult = { results, newCode, parsed };
+      
+      renderTable(results, newCode);
+      
+      // 显示重复警告
+      if (duplicateCount > 0) {
+        $dupWarn.classList.add('show');
+        $dupWarn.textContent = `有 ${duplicateCount} 个生成值与现有数据重复，建议手动调整。`;
+      } else {
+        $dupWarn.classList.remove('show');
+      }
+      
+      $genStats.textContent = `共生成 ${results.filter(r => r.l1 || r.l2).length} 个值，${duplicateCount} 个重复`;
+      $resultSection.classList.add('show');
+      showToast('生成完成');
+    } catch (e) {
+      console.error(e);
+      showToast('生成失败: ' + e.message);
+    } finally {
+      $generateBtn.innerHTML = '生成事件ID';
+      $generateBtn.disabled = false;
+    }
+  }, 100);
+});
+
+// 渲染结果表格
+function renderTable(results, newCode) {
+  const l2Header = newCode + '二级（默认 content_type）';
+  
+  let html = `<table><thead><tr>
+    <th style="min-width:200px">埋点说明</th>
+    <th style="min-width:180px" class="col-new-1">${newCode}</th>
+    <th style="min-width:280px" class="col-new-2">${l2Header}</th>
+  </tr></thead><tbody>`;
+  
+  for (const r of results) {
+    const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
+    html += `<tr>
+      <td>${escapeHtml(r.desc)}</td>
+      <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
+      <td class="col-new-2" ${dupClass}>${escapeHtml(r.l2)}</td>
+    </tr>`;
+  }
+  
+  html += '</tbody></table>';
+  $resultTable.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 复制结果（只复制参数ID列，不含埋点说明列）
+$copyBtn.addEventListener('click', () => {
+  if (!currentResult) return;
+  const { results, newCode } = currentResult;
+  const l2Header = newCode + '二级（默认 content_type）';
+  
+  // 生成Tab分隔的文本，只包含参数ID列
+  let text = `${newCode}\t${l2Header}\n`;
+  for (const r of results) {
+    text += `${r.l1}\t${r.l2}\n`;
+  }
+  
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('已复制到剪贴板，可直接粘贴到Excel');
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('已复制到剪贴板');
+  });
+});
+
+// 下载Excel (CSV格式，Excel可直接打开)
+$downloadBtn.addEventListener('click', () => {
+  if (!currentResult) return;
+  const { results, newCode } = currentResult;
+  const l2Header = newCode + '二级（默认 content_type）';
+  
+  // 生成CSV with BOM
+  let csv = '\uFEFF'; // BOM for UTF-8
+  csv += `埋点说明,${newCode},${l2Header}\n`;
+  for (const r of results) {
+    const desc = (r.desc || '').replace(/"/g, '""');
+    const l1 = (r.l1 || '').replace(/"/g, '""');
+    const l2 = (r.l2 || '').replace(/"/g, '""');
+    csv += `"${desc}","${l1}","${l2}"\n`;
+  }
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${newCode}_埋点生成结果.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('CSV文件已下载');
+});
+
+// 加载示例数据
+$loadSampleBtn.addEventListener('click', () => {
+  const sample = `埋点说明	R331	R331二级	R329	R329二级	R327	R327二级
+判断为Organic自然量用户	NativeUserTrack		OrganicUserRoute		NaturalUserFlow	
+判断为其他用户（买量用户）	PromoUserTrack		CampaignUserRoute		AcquiredUserFlow	
+全局配置发起请求	RemoteCfgFetch		CloudSettingLoad		RemoteConfigFetch	
+全局配置请求成功	RemoteCfgSynced		CloudSettingReady		RemoteConfigReady	
+全局配置请求失败	RemoteCfgFailed		CloudSettingFault		RemoteConfigError	
+新用户开屏页曝光	IntroTrack	IntroTrackSplashView	OnboardRoute	OnboardRouteSplashView	OnboardFlow	OnboardFlowSplashView
+新用户开屏广告曝光		IntroTrackAdView		OnboardRouteAdView		OnboardFlowAdView
+新用户开屏广告点击		IntroTrackAdTap		OnboardRouteAdTap		OnboardFlowAdTap
+新用户设备数据扫描曝光		IntroTrackInspectView		OnboardRouteInspectView		OnboardFlowDeviceView
+新用户设备数据扫描点击Start to Use按钮		IntroTrackStartTap		OnboardRouteStartTap		OnboardFlowStartTap
+新用户首次首页曝光		IntroTrackMainView		OnboardRouteMainView		OnboardFlowHomeView
+首页曝光	HomeBase	HomeBaseView	MainCenter	MainCenterView	HomeCenter	HomeCenterView
+首页点击一键清理圆环		HomeBaseCleanRingTap		MainCenterCleanRingTap		HomeCenterCleanRingTap
+首页点击一键清理按钮		HomeBaseOneCleanTap		MainCenterOneCleanTap		HomeCenterOneCleanTap
+首页点击Network Traffic		HomeBaseTrafficTap		MainCenterTrafficTap		HomeCenterTrafficTap
+首页点击通知清理		HomeBaseNoticeCleanTap		MainCenterNoticeCleanTap		HomeCenterNoticeCleanTap
+完成结果页曝光	FinishHub	FinishHubCoreView	CompleteCenterCore	CompleteCenterCoreView	CompleteCenter	CompleteCenterView
+完成结果页点击返回		FinishHubBackTapCore		CompleteCenterBackTapCore		CompleteCenterBackTap
+完成结果页点击TryNow跳转通知清理功能	FinishQuick	FinishQuickCoreNoticeCleanTap	CompleteShortcutCore	CompleteShortcutCoreNoticeCleanTap	CompleteShortcut	CompleteShortcutNoticeCleanTap
+点击功能跳转文件管理权限授权时上报	PermitTrack	PermitTrackAllFilesAsk	GrantRoute	GrantRouteAllFilesAsk	GrantFlow	GrantFlowAllFilesAsk
+文件管理权限授权成功		PermitTrackAllFilesDone		GrantRouteAllFilesDone		GrantFlowAllFilesDone
+FCM接收到消息时判断能否弹出通知	FcmGateAllow		PushGatePassCore		PushGatePass	
+固定通知弹出（总）	FixedAlertShow		PinnedNoticeViewCore		PinnedNoticeView	
+固定通知点击截图清理icon	FixedAlertClick	FixedAlertClickCoreScreenshot	PinnedNoticeTapCore	PinnedNoticeTapCoreScreenshot	PinnedNoticeTap	PinnedNoticeTapScreenshot
+一键清理功能扫描页	SweepClearTrack	SweepClearTrackScan	CleanSweepRoute	CleanSweepRouteScan	CleanSweepFlow	CleanSweepFlowScan
+一键清理功能详情页		SweepClearTrackDetail		CleanSweepRouteDetail		CleanSweepFlowDetail
+一键清理功能详情页点击清理按钮		SweepClearTrackCleanTap		CleanSweepRouteCleanTap		CleanSweepFlowCleanTap
+一键清理功能详情页点击清理按钮，清理成功进入完成结果页		SweepClearTrackDone		CleanSweepRouteDone		CleanSweepFlowDone
+通知清理功能扫描页	AlertClearTrack	AlertClearTrackScan	NoticeCleanRoute	NoticeCleanRouteScan	NoticeCleanFlow	NoticeCleanFlowScan
+App管理功能扫描页	AppSortTrack	AppSortTrackScan	AppsManageRoute	AppsManageRouteScan	AppManageFlow	AppManageFlowScan
+截图清理功能扫描页	ShotCleanTrack	ShotCleanTrackScan	CaptureCleanRoute	CaptureCleanRouteScan	CaptureCleanFlow	CaptureCleanFlowScan
+大文件清理功能扫描页	HeavyFileTrack	HeavyFileTrackScan	BulkFileRoute	BulkFileRouteScan	BulkFileFlow	BulkFileFlowScan
+重复图片清理功能扫描页	DupPicTrack	DupPicTrackScan	GalleryTwinRoute	GalleryTwinRouteScan	PhotoTwinFlow	PhotoTwinFlowScan
+视频清理功能扫描页	ClipClearTrack	ClipClearTrackScan	MediaSweepRoute	MediaSweepRouteScan	VideoSweepFlow	VideoSweepFlowScan
+App进程管理功能扫描页	RamBoostTrack	RamBoostTrackScan	ProcessTuneRoute	ProcessTuneRouteScan	ProcessTuneFlow	ProcessTuneFlowScan
+设备扫描功能扫描页	HardwareScanTrack	HardwareScanTrackScan	InspectCheckRoute	InspectCheckRouteScan	DeviceCheckFlow	DeviceCheckFlowScan
+电量信息功能扫描页	BatteryStatsTrack	BatteryStatsTrackScan	PowerInfoRoute	PowerInfoRouteScan	PowerInfoFlow	PowerInfoFlowScan
+网络测速功能扫描页	NetRateTrack	NetRateTrackScan	SpeedCheckRoute	SpeedCheckRouteScan	SpeedCheckFlow	SpeedCheckFlowScan
+通知授权时上报	NotifyGrantLog						
+全局配置参数						
+固定通知开关	Fixalrtsw		Alrttogle		Pusytogle	
+Workmanager循环时间间隔	Wmloopgap		Tasterr		Tasshiter	
+Jobservers循环时间间隔	Jsloopgap		Sernter		Sershinte	
+弹出通知开关	Popalrtsw		Alterttog		Puserttog	
+功能动画页加时时长	Animdurval		Animowtime		Aniowtime	
+通知开始时间	Alrtstrttime		Alteginat		Puseginat	
+连续弹通知的次数	Alrtbrstcnt		Altrstnum		Pusrstnum	
+全局配置拉取时间间隔	Cfgpullintval		Cfgpulltm		Conpulltm	
+定时闹钟拉活时间间隔	Almwakegap		Clkakegap		Alaakegap	
+引导通知开关（新）	Guidealrtsw		Guitogr		Guiushtog	
+评分引导	Rateguidectl		Ratepowerctl		Ratlowctl	
+RAM通知文案	Ramnotitext		Memshword		Ramshword	
+24小时内最多弹	Dayalrtcap		AlrtCap		Pusylimit	
+启动页时长	Psqdytim		Splartr		Splhduart	
+实验名称	pssymc		prisetr		priTseset	
+实验组名称	pssyzmc		priorpr		priGororp	
+冷启动	pslenqd		coqd		clenwitch	
+热启动	psreqd		htqd		hrewitch	
+FB归因事件(事件名)	psfb_gy		spfb_gy	
+广告请求事件(事件名)	ps_req		sp_req	
+广告匹配事件(事件名)	ps_match		sp_ppi	
+广告点击事件(事件名)	ps_cilck		sp_ckk	
+FB归因事件(adjust代码)codetoken	7r990f		g8w8yv	
+广告请求事件(adjust代码)codetoken	to7umu		2lxzvy	
+广告点击事件(adjust代码)codetoken	d7cm0z		frchf8`;
+  
+  $input.value = sample;
+  $input.dispatchEvent(new Event('input'));
+  $newCode.value = 'R333';
+  showToast('示例数据已加载');
+});
+
+// 清空
+$clearBtn.addEventListener('click', () => {
+  $input.value = '';
+  $newCode.value = 'R333';
+  $parsedInfo.classList.remove('show');
+  $resultSection.classList.remove('show');
+  currentResult = null;
+  showToast('已清空');
+});
+</script>
+</body>
+</html>
