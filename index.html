@@ -214,11 +214,16 @@ tr:hover { background: #f8fafc; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ===== 可编辑输入表格 ===== */
+/* ===== 输入表格 ===== */
 .paste-toolbar {
-  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center;
 }
 .btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-clear {
+  color: var(--danger); border: 1.5px solid var(--danger);
+  background: var(--danger-light);
+}
+.btn-clear:hover { background: var(--danger); color: #fff; }
 .input-table {
   border-collapse: collapse;
   font-size: 13px;
@@ -227,28 +232,21 @@ tr:hover { background: #f8fafc; }
 }
 .input-table th, .input-table td {
   border: 1px solid #d1d5db;
-  padding: 6px 10px;
-  min-width: 80px;
-  max-width: 300px;
+  padding: 0;
+  min-width: 100px;
+  max-width: 280px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: text;
   position: relative;
 }
 .input-table th {
   background: #f8fafc;
-  font-weight: 600;
-  color: #475569;
-  text-align: left;
-  white-space: nowrap;
 }
 .input-table th:first-child, .input-table td:first-child {
   background: #f1f5f9;
   text-align: center;
-  min-width: 40px;
-  width: 40px;
-  cursor: default;
+  min-width: 42px;
+  width: 42px;
+  max-width: 42px;
   color: #94a3b8;
   font-size: 12px;
   font-weight: 600;
@@ -256,32 +254,42 @@ tr:hover { background: #f8fafc; }
   left: 0;
   z-index: 1;
 }
-.input-table th:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 2;
+.input-table thead th:first-child { z-index: 3; }
+.input-table thead th { position: sticky; top: 0; z-index: 2; }
+.input-table input {
+  width: 100%;
+  border: none;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: "SF Mono", "Cascadia Code", "Consolas", monospace;
+  background: transparent;
+  outline: none;
+  box-sizing: border-box;
 }
-.input-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.input-table thead input {
+  font-weight: 600;
+  color: #475569;
+  font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 }
-.input-table th:first-child {
-  z-index: 3;
+.input-table input:focus {
+  background: #eef2ff;
+  box-shadow: inset 0 0 0 2px var(--primary);
 }
-.input-table td:focus, .input-table th:focus {
-  outline: 2px solid var(--primary);
-  outline-offset: -2px;
-  background: #fff;
-  z-index: 1;
+.input-table input::placeholder { color: #cbd5e1; }
+.paste-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 30px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: none;
 }
-.input-table tr:hover td:not(:first-child) {
-  background: #f8fafc;
-}
-.input-table td:empty::before {
-  content: '\00a0';
-  color: #cbd5e1;
-}
+.paste-zone.show { display: block; }
+.paste-zone:hover { border-color: var(--primary); background: var(--primary-light); }
+.paste-zone b { color: var(--primary); }
 .paste-hint {
   color: var(--text-secondary);
   font-size: 13px;
@@ -300,20 +308,22 @@ tr:hover { background: #f8fafc; }
     <div class="step-header">
       <span class="step-num">1</span><span class="step-title">粘贴现有项目数据</span>
     </div>
-    <p class="hint">从 Excel 选中所有数据列（含表头），Ctrl+C 复制，然后点击下方表格任意单元格，Ctrl+V 粘贴。表格会自动扩展行列。</p>
+    <p class="hint">从 Excel 选中所有数据列（含表头），Ctrl+C 复制，然后点击下方表格任意单元格按 Ctrl+V 粘贴。表格自动扩展行列。</p>
     <div class="paste-toolbar">
-      <button class="btn btn-outline btn-sm" id="addRowBtn">+ 添加行</button>
-      <button class="btn btn-outline btn-sm" id="addColBtn">+ 添加列</button>
-      <button class="btn btn-outline btn-sm" id="delRowBtn">- 删除末行</button>
-      <button class="btn btn-outline btn-sm" id="delColBtn">- 删除末列</button>
+      <button class="btn btn-outline btn-sm" id="addRowBtn">+ 行</button>
+      <button class="btn btn-outline btn-sm" id="addColBtn">+ 列</button>
+      <button class="btn btn-outline btn-sm" id="delRowBtn">- 行</button>
+      <button class="btn btn-outline btn-sm" id="delColBtn">- 列</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-clear btn-sm" id="clearTableBtn">清空表格</button>
     </div>
     <div class="table-wrap" style="max-height:420px;">
       <table class="input-table" id="inputTable">
-        <thead><tr><th></th><th contenteditable="true">埋点说明</th></tr></thead>
+        <thead><tr><th>#</th><th><input type="text" value="埋点说明" placeholder="列名"></th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
-    <p class="paste-hint">点击单元格 → <b>Ctrl+V</b> 粘贴 Excel 数据 → 表格自动扩展行列</p>
+    <p class="paste-hint">点击单元格 → <b>Ctrl+V</b> 粘贴 Excel 数据 → 自动扩展行列</p>
     <div class="parsed-info" id="parsedInfo"></div>
     <div class="features">
       <div class="feature">自动识别版本列</div>
@@ -1115,10 +1125,20 @@ function showToast(msg) {
 }
 
 // ============================================================
-// 可编辑输入表格 — 初始化、行列管理、粘贴、读取
+// 输入表格 — 基于 input 元素，可靠粘贴，无乱码
 // ============================================================
 
-// 初始化表格（默认5空行）
+// 创建一个带 input 的单元格
+function makeCell(isHeader) {
+  const cell = document.createElement(isHeader ? 'th' : 'td');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.setAttribute('autocomplete', 'off');
+  cell.appendChild(input);
+  return cell;
+}
+
+// 初始化表格（默认 5 空行）
 function initInputTable() {
   const tbody = $inputTable.querySelector('tbody');
   tbody.innerHTML = '';
@@ -1130,36 +1150,23 @@ function addInputRow() {
   const tbody = $inputTable.querySelector('tbody');
   const colCount = $inputTable.querySelector('thead tr').children.length - 1;
   const tr = document.createElement('tr');
-  const rowNum = document.createElement('td');
-  rowNum.textContent = tbody.children.length + 1;
-  tr.appendChild(rowNum);
-  for (let i = 0; i < colCount; i++) {
-    const td = document.createElement('td');
-    td.contentEditable = 'true';
-    tr.appendChild(td);
-  }
+  const rn = document.createElement('td');
+  rn.textContent = tbody.children.length + 1;
+  tr.appendChild(rn);
+  for (let i = 0; i < colCount; i++) tr.appendChild(makeCell(false));
   tbody.appendChild(tr);
 }
 
 // 添加一列
 function addInputCol() {
-  const theadTr = $inputTable.querySelector('thead tr');
-  const th = document.createElement('th');
-  th.contentEditable = 'true';
-  theadTr.appendChild(th);
-  $inputTable.querySelectorAll('tbody tr').forEach(tr => {
-    const td = document.createElement('td');
-    td.contentEditable = 'true';
-    tr.appendChild(td);
-  });
+  $inputTable.querySelector('thead tr').appendChild(makeCell(true));
+  $inputTable.querySelectorAll('tbody tr').forEach(tr => tr.appendChild(makeCell(false)));
 }
 
 // 删除末行
 function delInputRow() {
   const tbody = $inputTable.querySelector('tbody');
-  if (tbody.children.length > 1) {
-    tbody.removeChild(tbody.lastElementChild);
-  }
+  if (tbody.children.length > 1) tbody.removeChild(tbody.lastElementChild);
 }
 
 // 删除末列
@@ -1167,9 +1174,7 @@ function delInputCol() {
   const theadTr = $inputTable.querySelector('thead tr');
   if (theadTr.children.length > 2) {
     theadTr.removeChild(theadTr.lastElementChild);
-    $inputTable.querySelectorAll('tbody tr').forEach(tr => {
-      tr.removeChild(tr.lastElementChild);
-    });
+    $inputTable.querySelectorAll('tbody tr').forEach(tr => tr.removeChild(tr.lastElementChild));
   }
 }
 
@@ -1180,43 +1185,54 @@ function updateRowNumbers() {
   });
 }
 
-// 粘贴处理：解析 Excel 数据并填充单元格
-function handleInputTablePaste(e) {
-  e.preventDefault();
+// 清空整个表格（恢复初始状态）
+function clearInputTable() {
+  const theadTr = $inputTable.querySelector('thead tr');
+  theadTr.innerHTML = '<th>#</th><th><input type="text" value="埋点说明" placeholder="列名"></th>';
+  initInputTable();
+  $parsedInfo.classList.remove('show');
+  $resultSection.classList.remove('show');
+  currentResult = null;
+}
+
+// 粘贴处理：只在检测到 Tab/换行时拦截（多单元格粘贴），单值粘贴放行
+function handleTablePaste(e) {
   const clipText = (e.clipboardData || window.clipboardData).getData('text/plain');
   if (!clipText) return;
-  
+
+  // 如果不含 Tab 和换行，说明是单值粘贴，放行让浏览器处理
+  if (!clipText.includes('\t') && !clipText.includes('\n') && !clipText.includes('\r')) return;
+
+  e.preventDefault();
+
   // 解析粘贴的数据
   const lines = clipText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
   if (lines.length === 0) return;
-  
+
   const parsedRows = lines.map(line => splitTabLine(line));
   const maxCols = Math.max(...parsedRows.map(r => r.length));
-  
-  // 获取目标单元格位置
-  const target = e.target.closest('th, td');
-  if (!target || target.cellIndex === 0) return; // 不能粘到行号列
-  
-  const targetRow = target.closest('tr');
+
+  // 定位目标 input 所在单元格
+  const inputEl = e.target.closest('input');
+  if (!inputEl) return;
+  const targetCell = inputEl.parentElement; // th 或 td
+  const targetRow = targetCell.closest('tr');
+  if (!targetRow || targetCell.cellIndex === 0) return; // 不能粘到行号列
+
   const allRows = Array.from($inputTable.querySelectorAll('tr'));
   const startRowIdx = allRows.indexOf(targetRow);
-  const startColIdx = target.cellIndex; // 含行号列
-  
-  // 确保列数足够
-  const currentCols = $inputTable.querySelector('thead tr').children.length;
-  const neededCols = startColIdx + maxCols;
-  while ($inputTable.querySelector('thead tr').children.length < neededCols) {
-    addInputCol();
-  }
-  
-  // 确保行数足够
+  const startColIdx = targetCell.cellIndex;
+
+  // 自动扩展列
+  const theadTr = $inputTable.querySelector('thead tr');
+  while (theadTr.children.length < startColIdx + maxCols) addInputCol();
+
+  // 自动扩展行（粘贴到表头时，数据行从第1行开始填充）
   const isHeader = targetRow.parentElement.tagName === 'THEAD';
   const tbody = $inputTable.querySelector('tbody');
-  const neededBodyRows = isHeader ? parsedRows.length - 1 : (startRowIdx - 1) + parsedRows.length;
-  while (tbody.children.length < neededBodyRows) {
-    addInputRow();
-  }
-  
+  const neededRows = isHeader ? (parsedRows.length - 1) : (startRowIdx - 1) + parsedRows.length;
+  while (tbody.children.length < neededRows) addInputRow();
+
   // 填充数据
   const allRowsAfter = Array.from($inputTable.querySelectorAll('tr'));
   for (let i = 0; i < parsedRows.length; i++) {
@@ -1227,24 +1243,29 @@ function handleInputTablePaste(e) {
       const colIdx = startColIdx + j;
       const cell = row.children[colIdx];
       if (cell) {
-        cell.textContent = parsedRows[i][j] || '';
+        const inp = cell.querySelector('input');
+        if (inp) inp.value = parsedRows[i][j] || '';
       }
     }
   }
-  
+
   updateRowNumbers();
   updateParsedInfo();
   showToast(`已粘贴 ${parsedRows.length} 行 × ${maxCols} 列`);
 }
 
-// 从表格读取所有数据为 Tab 分隔文本
+// 读取整个表格为 Tab 分隔文本
 function getInputTableText() {
   const rows = $inputTable.querySelectorAll('tr');
   const lines = [];
   rows.forEach(row => {
-    const cells = Array.from(row.children).slice(1); // 跳过行号列
-    const text = cells.map(c => c.textContent || '').join('\t');
-    if (text.trim()) lines.push(text);
+    const cells = Array.from(row.children).slice(1);
+    const vals = cells.map(c => {
+      const inp = c.querySelector('input');
+      return inp ? inp.value : (c.textContent || '');
+    });
+    const text = vals.join('\t');
+    if (text.replace(/\t/g, '').trim()) lines.push(text);
   });
   return lines.join('\n');
 }
@@ -1253,51 +1274,50 @@ function getInputTableText() {
 function populateInputTable(text) {
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
   if (lines.length === 0) return;
-  
+
   const headerCells = splitTabLine(lines[0]);
   const dataLines = lines.slice(1);
-  
+
   // 重建表头
   const theadTr = $inputTable.querySelector('thead tr');
-  theadTr.innerHTML = '<th></th>';
+  theadTr.innerHTML = '<th>#</th>';
   headerCells.forEach(h => {
     const th = document.createElement('th');
-    th.contentEditable = 'true';
-    th.textContent = h;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = h;
+    th.appendChild(inp);
     theadTr.appendChild(th);
   });
-  
+
   // 重建数据行
   const tbody = $inputTable.querySelector('tbody');
   tbody.innerHTML = '';
   dataLines.forEach((line, i) => {
     const cells = splitTabLine(line);
     const tr = document.createElement('tr');
-    const rowNum = document.createElement('td');
-    rowNum.textContent = i + 1;
-    tr.appendChild(rowNum);
+    const rn = document.createElement('td');
+    rn.textContent = i + 1;
+    tr.appendChild(rn);
     headerCells.forEach((_, j) => {
       const td = document.createElement('td');
-      td.contentEditable = 'true';
-      td.textContent = cells[j] || '';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = cells[j] || '';
+      td.appendChild(inp);
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
   });
-  
-  // 末尾加几行空行
+
   for (let i = 0; i < 3; i++) addInputRow();
-  
   updateParsedInfo();
 }
 
 // 更新解析预览
 function updateParsedInfo() {
   const text = getInputTableText();
-  if (text.length < 10) {
-    $parsedInfo.classList.remove('show');
-    return;
-  }
+  if (text.length < 10) { $parsedInfo.classList.remove('show'); return; }
   const parsed = parseData(text);
   if (!parsed) {
     $parsedInfo.classList.add('show', 'has-warn');
@@ -1309,23 +1329,24 @@ function updateParsedInfo() {
   $parsedInfo.innerHTML = `已识别 <b>${parsed.versionPairs.length}</b> 个版本列对，<b>${parsed.rows.length}</b> 行数据。列: ${parsed.versionPairs.map(p => p.l1Name).join(' / ')}`;
 }
 
-// 绑定表格事件
-$inputTable.addEventListener('paste', handleInputTablePaste);
+// ===== 事件绑定 =====
+$inputTable.addEventListener('paste', handleTablePaste);
 $inputTable.addEventListener('input', () => { updateParsedInfo(); });
-
-// 按住 Tab 在单元格间移动时阻止默认跳焦
 $inputTable.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.matches('th, td')) {
+  // Enter → 下一行同列
+  if (e.key === 'Enter') {
+    const inp = e.target.closest('input');
+    if (!inp) return;
     e.preventDefault();
-    // 移动到下一行同列
-    const cell = e.target;
+    const cell = inp.parentElement;
     const row = cell.closest('tr');
     const allRows = Array.from($inputTable.querySelectorAll('tr'));
     const rowIdx = allRows.indexOf(row);
     const colIdx = cell.cellIndex;
     const nextRow = allRows[rowIdx + 1];
     if (nextRow && nextRow.children[colIdx]) {
-      nextRow.children[colIdx].focus();
+      const ni = nextRow.children[colIdx].querySelector('input');
+      if (ni) ni.focus();
     }
   }
 });
@@ -1333,8 +1354,12 @@ $inputTable.addEventListener('keydown', (e) => {
 // 行列管理按钮
 document.getElementById('addRowBtn').addEventListener('click', () => { addInputRow(); updateRowNumbers(); });
 document.getElementById('addColBtn').addEventListener('click', () => addInputCol());
-document.getElementById('delRowBtn').addEventListener('click', () => { delInputRow(); });
+document.getElementById('delRowBtn').addEventListener('click', () => delInputRow());
 document.getElementById('delColBtn').addEventListener('click', () => delInputCol());
+document.getElementById('clearTableBtn').addEventListener('click', () => {
+  clearInputTable();
+  showToast('表格已清空');
+});
 
 // 初始化
 initInputTable();
@@ -1548,11 +1573,8 @@ FB归因事件(adjust代码)codetoken	7r990f		g8w8yv
 
 // 清空
 $clearBtn.addEventListener('click', () => {
-  initInputTable();
+  clearInputTable();
   $newCode.value = 'R333';
-  $parsedInfo.classList.remove('show');
-  $resultSection.classList.remove('show');
-  currentResult = null;
   showToast('已清空');
 });
 </script>
