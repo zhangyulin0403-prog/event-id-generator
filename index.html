@@ -941,30 +941,9 @@ function cleanCell(raw) {
   return s;
 }
 
-// 智能分割一行文本为单元格数组（支持带引号的Tab分隔）
+// 分割一行文本为单元格数组（按 Tab 分割 + 清理引号）
 function splitTabLine(line) {
-  const cells = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-        current += '""';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-        current += ch;
-      }
-    } else if (ch === '\t' && !inQuotes) {
-      cells.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  cells.push(current);
-  return cells.map(c => cleanCell(c));
+  return line.split('\t').map(c => cleanCell(c));
 }
 
 function parseData(text) {
@@ -1195,29 +1174,40 @@ function clearInputTable() {
   currentResult = null;
 }
 
-// 粘贴处理：只在检测到 Tab/换行时拦截（多单元格粘贴），单值粘贴放行
+// 粘贴处理：智能判断粘贴类型
 function handleTablePaste(e) {
   const clipText = (e.clipboardData || window.clipboardData).getData('text/plain');
   if (!clipText) return;
 
-  // 如果不含 Tab 和换行，说明是单值粘贴，放行让浏览器处理
-  if (!clipText.includes('\t') && !clipText.includes('\n') && !clipText.includes('\r')) return;
+  const hasTab = clipText.includes('\t');
+  const hasNewline = clipText.includes('\n') || clipText.includes('\r');
+
+  // 单值粘贴：放行让浏览器处理
+  if (!hasTab && !hasNewline) return;
 
   e.preventDefault();
 
-  // 解析粘贴的数据
   const lines = clipText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
   if (lines.length === 0) return;
 
   const parsedRows = lines.map(line => splitTabLine(line));
   const maxCols = Math.max(...parsedRows.map(r => r.length));
 
-  // 定位目标 input 所在单元格
+  // 多行 + 多列 → 重建整表（第一行=表头，其余=数据）
+  // 这是最常见场景：从 Excel 复制整张表粘贴
+  if (lines.length >= 2 && maxCols >= 2) {
+    populateInputTable(clipText);
+    showToast(`已粘贴 ${lines.length} 行 × ${maxCols} 列（含表头）`);
+    return;
+  }
+
+  // 单行多列 → 从点击位置向右填充
+  // 单列多行 → 从点击位置向下填充
   const inputEl = e.target.closest('input');
   if (!inputEl) return;
-  const targetCell = inputEl.parentElement; // th 或 td
+  const targetCell = inputEl.parentElement;
   const targetRow = targetCell.closest('tr');
-  if (!targetRow || targetCell.cellIndex === 0) return; // 不能粘到行号列
+  if (!targetRow || targetCell.cellIndex === 0) return;
 
   const allRows = Array.from($inputTable.querySelectorAll('tr'));
   const startRowIdx = allRows.indexOf(targetRow);
@@ -1227,7 +1217,7 @@ function handleTablePaste(e) {
   const theadTr = $inputTable.querySelector('thead tr');
   while (theadTr.children.length < startColIdx + maxCols) addInputCol();
 
-  // 自动扩展行（粘贴到表头时，数据行从第1行开始填充）
+  // 自动扩展行
   const isHeader = targetRow.parentElement.tagName === 'THEAD';
   const tbody = $inputTable.querySelector('tbody');
   const neededRows = isHeader ? (parsedRows.length - 1) : (startRowIdx - 1) + parsedRows.length;
@@ -1236,12 +1226,10 @@ function handleTablePaste(e) {
   // 填充数据
   const allRowsAfter = Array.from($inputTable.querySelectorAll('tr'));
   for (let i = 0; i < parsedRows.length; i++) {
-    const rowIdx = startRowIdx + i;
-    const row = allRowsAfter[rowIdx];
+    const row = allRowsAfter[startRowIdx + i];
     if (!row) continue;
     for (let j = 0; j < parsedRows[i].length; j++) {
-      const colIdx = startColIdx + j;
-      const cell = row.children[colIdx];
+      const cell = row.children[startColIdx + j];
       if (cell) {
         const inp = cell.querySelector('input');
         if (inp) inp.value = parsedRows[i][j] || '';
