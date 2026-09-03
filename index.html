@@ -213,6 +213,82 @@ tr:hover { background: #f8fafc; }
   animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== 可编辑输入表格 ===== */
+.paste-toolbar {
+  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.input-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: max-content;
+  min-width: 100%;
+}
+.input-table th, .input-table td {
+  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+  min-width: 80px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  position: relative;
+}
+.input-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  text-align: left;
+  white-space: nowrap;
+}
+.input-table th:first-child, .input-table td:first-child {
+  background: #f1f5f9;
+  text-align: center;
+  min-width: 40px;
+  width: 40px;
+  cursor: default;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.input-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.input-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.input-table th:first-child {
+  z-index: 3;
+}
+.input-table td:focus, .input-table th:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  background: #fff;
+  z-index: 1;
+}
+.input-table tr:hover td:not(:first-child) {
+  background: #f8fafc;
+}
+.input-table td:empty::before {
+  content: '\00a0';
+  color: #cbd5e1;
+}
+.paste-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 10px;
+  text-align: center;
+}
+.paste-hint b { color: var(--primary); }
 </style>
 </head>
 <body>
@@ -224,11 +300,20 @@ tr:hover { background: #f8fafc; }
     <div class="step-header">
       <span class="step-num">1</span><span class="step-title">粘贴现有项目数据</span>
     </div>
-    <p class="hint">从 Excel 选中所有数据列（含表头），Ctrl+C 复制，然后 Ctrl+V 粘贴到下方文本框。格式：每列用 Tab 分隔，每行用换行分隔。</p>
-    <textarea id="inputData" placeholder="示例：
-埋点说明	R331	R331二级	R329	R329二级
-判断为Organic自然量用户	NativeUserTrack		OrganicUserRoute	
-新用户开屏页曝光	IntroTrack	IntroTrackSplashView	OnboardRoute	OnboardRouteSplashView"></textarea>
+    <p class="hint">从 Excel 选中所有数据列（含表头），Ctrl+C 复制，然后点击下方表格任意单元格，Ctrl+V 粘贴。表格会自动扩展行列。</p>
+    <div class="paste-toolbar">
+      <button class="btn btn-outline btn-sm" id="addRowBtn">+ 添加行</button>
+      <button class="btn btn-outline btn-sm" id="addColBtn">+ 添加列</button>
+      <button class="btn btn-outline btn-sm" id="delRowBtn">- 删除末行</button>
+      <button class="btn btn-outline btn-sm" id="delColBtn">- 删除末列</button>
+    </div>
+    <div class="table-wrap" style="max-height:420px;">
+      <table class="input-table" id="inputTable">
+        <thead><tr><th></th><th contenteditable="true">埋点说明</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="paste-hint">点击单元格 → <b>Ctrl+V</b> 粘贴 Excel 数据 → 表格自动扩展行列</p>
     <div class="parsed-info" id="parsedInfo"></div>
     <div class="features">
       <div class="feature">自动识别版本列</div>
@@ -1006,7 +1091,7 @@ function generate(parsedData, newCode) {
 // UI 交互
 // ============================================================
 
-const $input = document.getElementById('inputData');
+const $inputTable = document.getElementById('inputTable');
 const $newCode = document.getElementById('newCode');
 const $generateBtn = document.getElementById('generateBtn');
 const $loadSampleBtn = document.getElementById('loadSampleBtn');
@@ -1029,9 +1114,186 @@ function showToast(msg) {
   setTimeout(() => $toast.classList.remove('show'), 2500);
 }
 
-// 解析预览
-$input.addEventListener('input', () => {
-  const text = $input.value.trim();
+// ============================================================
+// 可编辑输入表格 — 初始化、行列管理、粘贴、读取
+// ============================================================
+
+// 初始化表格（默认5空行）
+function initInputTable() {
+  const tbody = $inputTable.querySelector('tbody');
+  tbody.innerHTML = '';
+  for (let i = 0; i < 5; i++) addInputRow();
+}
+
+// 添加一行
+function addInputRow() {
+  const tbody = $inputTable.querySelector('tbody');
+  const colCount = $inputTable.querySelector('thead tr').children.length - 1;
+  const tr = document.createElement('tr');
+  const rowNum = document.createElement('td');
+  rowNum.textContent = tbody.children.length + 1;
+  tr.appendChild(rowNum);
+  for (let i = 0; i < colCount; i++) {
+    const td = document.createElement('td');
+    td.contentEditable = 'true';
+    tr.appendChild(td);
+  }
+  tbody.appendChild(tr);
+}
+
+// 添加一列
+function addInputCol() {
+  const theadTr = $inputTable.querySelector('thead tr');
+  const th = document.createElement('th');
+  th.contentEditable = 'true';
+  theadTr.appendChild(th);
+  $inputTable.querySelectorAll('tbody tr').forEach(tr => {
+    const td = document.createElement('td');
+    td.contentEditable = 'true';
+    tr.appendChild(td);
+  });
+}
+
+// 删除末行
+function delInputRow() {
+  const tbody = $inputTable.querySelector('tbody');
+  if (tbody.children.length > 1) {
+    tbody.removeChild(tbody.lastElementChild);
+  }
+}
+
+// 删除末列
+function delInputCol() {
+  const theadTr = $inputTable.querySelector('thead tr');
+  if (theadTr.children.length > 2) {
+    theadTr.removeChild(theadTr.lastElementChild);
+    $inputTable.querySelectorAll('tbody tr').forEach(tr => {
+      tr.removeChild(tr.lastElementChild);
+    });
+  }
+}
+
+// 更新行号
+function updateRowNumbers() {
+  $inputTable.querySelectorAll('tbody tr').forEach((tr, i) => {
+    tr.children[0].textContent = i + 1;
+  });
+}
+
+// 粘贴处理：解析 Excel 数据并填充单元格
+function handleInputTablePaste(e) {
+  e.preventDefault();
+  const clipText = (e.clipboardData || window.clipboardData).getData('text/plain');
+  if (!clipText) return;
+  
+  // 解析粘贴的数据
+  const lines = clipText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length === 0) return;
+  
+  const parsedRows = lines.map(line => splitTabLine(line));
+  const maxCols = Math.max(...parsedRows.map(r => r.length));
+  
+  // 获取目标单元格位置
+  const target = e.target.closest('th, td');
+  if (!target || target.cellIndex === 0) return; // 不能粘到行号列
+  
+  const targetRow = target.closest('tr');
+  const allRows = Array.from($inputTable.querySelectorAll('tr'));
+  const startRowIdx = allRows.indexOf(targetRow);
+  const startColIdx = target.cellIndex; // 含行号列
+  
+  // 确保列数足够
+  const currentCols = $inputTable.querySelector('thead tr').children.length;
+  const neededCols = startColIdx + maxCols;
+  while ($inputTable.querySelector('thead tr').children.length < neededCols) {
+    addInputCol();
+  }
+  
+  // 确保行数足够
+  const isHeader = targetRow.parentElement.tagName === 'THEAD';
+  const tbody = $inputTable.querySelector('tbody');
+  const neededBodyRows = isHeader ? parsedRows.length - 1 : (startRowIdx - 1) + parsedRows.length;
+  while (tbody.children.length < neededBodyRows) {
+    addInputRow();
+  }
+  
+  // 填充数据
+  const allRowsAfter = Array.from($inputTable.querySelectorAll('tr'));
+  for (let i = 0; i < parsedRows.length; i++) {
+    const rowIdx = startRowIdx + i;
+    const row = allRowsAfter[rowIdx];
+    if (!row) continue;
+    for (let j = 0; j < parsedRows[i].length; j++) {
+      const colIdx = startColIdx + j;
+      const cell = row.children[colIdx];
+      if (cell) {
+        cell.textContent = parsedRows[i][j] || '';
+      }
+    }
+  }
+  
+  updateRowNumbers();
+  updateParsedInfo();
+  showToast(`已粘贴 ${parsedRows.length} 行 × ${maxCols} 列`);
+}
+
+// 从表格读取所有数据为 Tab 分隔文本
+function getInputTableText() {
+  const rows = $inputTable.querySelectorAll('tr');
+  const lines = [];
+  rows.forEach(row => {
+    const cells = Array.from(row.children).slice(1); // 跳过行号列
+    const text = cells.map(c => c.textContent || '').join('\t');
+    if (text.trim()) lines.push(text);
+  });
+  return lines.join('\n');
+}
+
+// 用文本数据填充表格
+function populateInputTable(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length === 0) return;
+  
+  const headerCells = splitTabLine(lines[0]);
+  const dataLines = lines.slice(1);
+  
+  // 重建表头
+  const theadTr = $inputTable.querySelector('thead tr');
+  theadTr.innerHTML = '<th></th>';
+  headerCells.forEach(h => {
+    const th = document.createElement('th');
+    th.contentEditable = 'true';
+    th.textContent = h;
+    theadTr.appendChild(th);
+  });
+  
+  // 重建数据行
+  const tbody = $inputTable.querySelector('tbody');
+  tbody.innerHTML = '';
+  dataLines.forEach((line, i) => {
+    const cells = splitTabLine(line);
+    const tr = document.createElement('tr');
+    const rowNum = document.createElement('td');
+    rowNum.textContent = i + 1;
+    tr.appendChild(rowNum);
+    headerCells.forEach((_, j) => {
+      const td = document.createElement('td');
+      td.contentEditable = 'true';
+      td.textContent = cells[j] || '';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  
+  // 末尾加几行空行
+  for (let i = 0; i < 3; i++) addInputRow();
+  
+  updateParsedInfo();
+}
+
+// 更新解析预览
+function updateParsedInfo() {
+  const text = getInputTableText();
   if (text.length < 10) {
     $parsedInfo.classList.remove('show');
     return;
@@ -1039,19 +1301,49 @@ $input.addEventListener('input', () => {
   const parsed = parseData(text);
   if (!parsed) {
     $parsedInfo.classList.add('show', 'has-warn');
-    $parsedInfo.textContent = '无法解析数据，请确保是正确的Excel复制格式（Tab分隔）';
+    $parsedInfo.textContent = '无法解析数据，请确保第一列为埋点说明，后续列为版本数据';
     return;
   }
   $parsedInfo.classList.remove('has-warn');
   $parsedInfo.classList.add('show');
   $parsedInfo.innerHTML = `已识别 <b>${parsed.versionPairs.length}</b> 个版本列对，<b>${parsed.rows.length}</b> 行数据。列: ${parsed.versionPairs.map(p => p.l1Name).join(' / ')}`;
+}
+
+// 绑定表格事件
+$inputTable.addEventListener('paste', handleInputTablePaste);
+$inputTable.addEventListener('input', () => { updateParsedInfo(); });
+
+// 按住 Tab 在单元格间移动时阻止默认跳焦
+$inputTable.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches('th, td')) {
+    e.preventDefault();
+    // 移动到下一行同列
+    const cell = e.target;
+    const row = cell.closest('tr');
+    const allRows = Array.from($inputTable.querySelectorAll('tr'));
+    const rowIdx = allRows.indexOf(row);
+    const colIdx = cell.cellIndex;
+    const nextRow = allRows[rowIdx + 1];
+    if (nextRow && nextRow.children[colIdx]) {
+      nextRow.children[colIdx].focus();
+    }
+  }
 });
+
+// 行列管理按钮
+document.getElementById('addRowBtn').addEventListener('click', () => { addInputRow(); updateRowNumbers(); });
+document.getElementById('addColBtn').addEventListener('click', () => addInputCol());
+document.getElementById('delRowBtn').addEventListener('click', () => { delInputRow(); });
+document.getElementById('delColBtn').addEventListener('click', () => delInputCol());
+
+// 初始化
+initInputTable();
 
 // 生成
 $generateBtn.addEventListener('click', () => {
-  const text = $input.value.trim();
+  const text = getInputTableText().trim();
   if (text.length < 10) {
-    showToast('请先粘贴数据');
+    showToast('请先在表格中粘贴数据');
     return;
   }
   const newCode = $newCode.value.trim();
@@ -1249,15 +1541,14 @@ FB归因事件(adjust代码)codetoken	7r990f		g8w8yv
 广告请求事件(adjust代码)codetoken	to7umu		2lxzvy	
 广告点击事件(adjust代码)codetoken	d7cm0z		frchf8`;
   
-  $input.value = sample;
-  $input.dispatchEvent(new Event('input'));
+  populateInputTable(sample);
   $newCode.value = 'R333';
   showToast('示例数据已加载');
 });
 
 // 清空
 $clearBtn.addEventListener('click', () => {
-  $input.value = '';
+  initInputTable();
   $newCode.value = 'R333';
   $parsedInfo.classList.remove('show');
   $resultSection.classList.remove('show');
