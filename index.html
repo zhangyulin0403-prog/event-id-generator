@@ -613,22 +613,42 @@ function transformAbbreviation(str, existingSet) {
   // 下划线风格 (如 ps_fb_gy -> cx_fb_attr)
   if (str.includes('_')) {
     const parts = str.split('_');
-    const newParts = parts.map((p, i) => {
-      if (i === 0) {
-        // 替换前缀
-        const prefixes = ['cx', 'dx', 'ex', 'fx', 'gx', 'hx', 'tx', 'nx', 'px', 'rx'];
-        for (const pre of prefixes) {
-          if (pre !== p) {
-            // 尝试替换
-            const candidate = pre + parts.slice(1).join('_');
-            if (!existingSet.has(candidate) && candidate !== str) return pre;
-          }
-        }
-        return 'cx';
+    const prefixes = ['cx', 'dx', 'ex', 'fx', 'gx', 'hx', 'tx', 'nx', 'px', 'rx', 'sx', 'vx', 'wx', 'bx', 'kx', 'mx', 'qx', 'yx', 'zx', 'ax', 'jx', 'lx', 'ox', 'ix', 'ux'];
+    
+    // 策略1: 替换前缀
+    for (const pre of prefixes) {
+      if (pre !== parts[0]) {
+        const candidate = pre + '_' + parts.slice(1).join('_');
+        if (!existingSet.has(candidate) && candidate !== str) return candidate;
       }
-      return p;
-    });
-    return newParts.join('_');
+    }
+    
+    // 策略2: 在最后一段插入字母
+    const lastPart = parts[parts.length - 1];
+    const midIdx = Math.floor(lastPart.length / 2);
+    for (const c of 'aeiouxyz') {
+      const newLast = lastPart.slice(0, midIdx) + c + lastPart.slice(midIdx);
+      const candidate = parts.slice(0, -1).join('_') + '_' + newLast;
+      if (!existingSet.has(candidate) && candidate !== str) return candidate;
+    }
+    
+    // 策略3: 替换最后一段的元音
+    for (const [from, to] of [['a','e'],['e','i'],['i','o'],['o','u'],['s','z'],['t','d']]) {
+      if (lastPart.includes(from)) {
+        const newLast = lastPart.replace(from, to);
+        const candidate = parts.slice(0, -1).join('_') + '_' + newLast;
+        if (!existingSet.has(candidate) && candidate !== str) return candidate;
+      }
+    }
+    
+    // 策略4: 添加数字后缀到最后一段
+    for (let i = 2; i <= 99; i++) {
+      const candidate = parts.slice(0, -1).join('_') + '_' + lastPart + i;
+      if (!existingSet.has(candidate)) return candidate;
+    }
+    
+    // 最终兜底
+    return guaranteeUnique(str, existingSet);
   }
   
   // 纯小写缩写 — 字母替换
@@ -661,7 +681,7 @@ function transformAbbreviation(str, existingSet) {
     const candidate = str + i;
     if (!existingSet.has(candidate)) return candidate;
   }
-  return str + '_new';
+  return guaranteeUnique(str + '_new', existingSet);
 }
 
 // 生成随机 codetoken
@@ -674,7 +694,18 @@ function generateCodeToken(existingSet) {
     }
     if (!existingSet.has(token)) return token;
   }
-  return 'new' + Math.random().toString(36).slice(2, 5);
+  return guaranteeUnique('new' + Math.random().toString(36).slice(2, 5), existingSet);
+}
+
+// 确保值绝对唯一：如已存在则添加数字后缀
+function guaranteeUnique(value, existingSet) {
+  if (!value) return value;
+  if (!existingSet.has(value)) return value;
+  for (let i = 2; i <= 999; i++) {
+    const candidate = value + i;
+    if (!existingSet.has(candidate)) return candidate;
+  }
+  return value + '_' + Math.random().toString(36).slice(2, 6);
 }
 
 // ============================================================
@@ -819,7 +850,7 @@ function generatePrimaryEventID(existingValues, allExistingSet) {
     if (!allExistingSet.has(candidate)) return candidate;
   }
   
-  return baseValue + '_gen';
+  return guaranteeUnique(baseValue + '_gen', allExistingSet);
 }
 
 function generateSecondaryID(existingValues, allExistingSet, newL1, oldL1) {
@@ -915,7 +946,7 @@ function generateSecondaryID(existingValues, allExistingSet, newL1, oldL1) {
     return transformAbbreviation(baseValue, allExistingSet);
   }
   
-  return baseValue;
+  return guaranteeUnique(baseValue, allExistingSet);
 }
 
 // ============================================================
@@ -1052,25 +1083,18 @@ function generate(parsedData, newCode) {
     }
     
     // 最终清理：确保生成的ID不含引号/特殊字符
-    const cleanL1 = sanitizeID(generated.l1);
-    const cleanL2 = sanitizeID(generated.l2);
+    let cleanL1 = sanitizeID(generated.l1);
+    let cleanL2 = sanitizeID(generated.l2);
     
-    // 检查重复
-    let isDup = false;
-    if (cleanL1 && allExisting.has(cleanL1)) {
-      isDup = true;
-      duplicateCount++;
-    }
-    if (cleanL2 && allExisting.has(cleanL2)) {
-      isDup = true;
-      duplicateCount++;
-    }
+    // 强制保证唯一：即使生成函数漏检，这里兜底
+    if (cleanL1) cleanL1 = guaranteeUnique(cleanL1, allExisting);
+    if (cleanL2) cleanL2 = guaranteeUnique(cleanL2, allExisting);
     
-    // 添加到已使用集合
+    // 添加到已使用集合（后续行不会生成相同值）
     if (cleanL1) allExisting.add(cleanL1);
     if (cleanL2) allExisting.add(cleanL2);
     
-    results.push({ desc, l1: cleanL1, l2: cleanL2, isDup });
+    results.push({ desc, l1: cleanL1, l2: cleanL2, isDup: false });
   }
   
   return { results, duplicateCount, newCode };
@@ -1390,7 +1414,7 @@ $generateBtn.addEventListener('click', () => {
         $dupWarn.classList.remove('show');
       }
       
-      $genStats.textContent = `共生成 ${results.filter(r => r.l1 || r.l2).length} 个值，${duplicateCount} 个重复`;
+      $genStats.textContent = `共生成 ${results.filter(r => r.l1 || r.l2).length} 个值，0 个重复`;
       $resultSection.classList.add('show');
       showToast('生成完成');
     } catch (e) {
