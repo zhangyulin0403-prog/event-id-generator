@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>埋点事件ID生成器</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>埋点事件ID生成器 v2.0</title>
 <style>
 :root {
   --bg: #f0f2f5;
@@ -301,8 +304,8 @@ tr:hover { background: #f8fafc; }
 </head>
 <body>
 <div class="container">
-  <h1>埋点事件ID生成器</h1>
-  <p class="subtitle">粘贴现有项目参数 → 输入新项目代号 → 自动生成不重复的事件ID</p>
+  <h1>埋点事件ID生成器 <span style="font-size:14px;color:var(--primary);background:var(--primary-light);padding:2px 10px;border-radius:12px;">v2.0</span></h1>
+  <p class="subtitle">粘贴现有项目参数 → 输入新项目代号 → 自动生成不重复的事件ID（支持单列/双列自动识别）</p>
 
   <div class="card">
     <div class="step-header">
@@ -1412,7 +1415,7 @@ initInputTable();
 $generateBtn.addEventListener('click', () => {
   const text = getInputTableText().trim();
   if (text.length < 10) {
-    showToast('请先在表格中粘贴数据');
+    showToast('请先在表格中粘贴数据（当前表格为空或数据太少）');
     return;
   }
   const newCode = $newCode.value.trim();
@@ -1428,13 +1431,32 @@ $generateBtn.addEventListener('click', () => {
     try {
       const parsed = parseData(text);
       if (!parsed) {
-        showToast('数据格式有误，请检查');
+        showToast('数据格式有误：至少需要2行（表头+数据），请检查');
         return;
       }
+      
+      // 调试信息：检查解析结果
+      if (parsed.rows.length === 0) {
+        showToast('解析到0行数据，请检查表格内容是否正确');
+        return;
+      }
+      if (parsed.versionPairs.length === 0) {
+        showToast('未识别到版本列，请确保表头第一行有列名');
+        return;
+      }
+      
       currentParsed = parsed;
       
       const { results, duplicateCount, hasL2 } = generate(parsed, newCode);
       currentResult = { results, newCode, parsed, hasL2 };
+      
+      // 检查生成结果
+      const validCount = results.filter(r => r.l1 || r.l2).length;
+      if (validCount === 0) {
+        showToast('生成结果为空，请检查输入数据格式');
+        console.log('调试: parsed=', parsed);
+        console.log('调试: results=', results);
+      }
       
       renderTable(results, newCode, hasL2);
       
@@ -1446,12 +1468,14 @@ $generateBtn.addEventListener('click', () => {
         $dupWarn.classList.remove('show');
       }
       
-      $genStats.textContent = `共生成 ${results.filter(r => r.l1 || r.l2).length} 个值，0 个重复`;
+      const modeLabel = hasL2 ? '双列' : '单列';
+      $genStats.textContent = `共生成 ${validCount} 个值，0 个重复（${modeLabel}模式）`;
       $resultSection.classList.add('show');
-      showToast('生成完成');
+      showToast(`生成完成：${validCount} 个值（${modeLabel}模式）`);
     } catch (e) {
       console.error(e);
       showToast('生成失败: ' + e.message);
+      alert('生成失败: ' + e.message + '\n\n请截图此错误发给开发者');
     } finally {
       $generateBtn.innerHTML = '生成事件ID';
       $generateBtn.disabled = false;
