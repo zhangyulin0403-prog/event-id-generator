@@ -1002,18 +1002,35 @@ function parseData(text) {
   // 解析表头
   const headers = splitTabLine(lines[0]);
   
-  // 识别版本列对
-  // 格式: 一级列, 二级列 交替排列
+  // 检测是否有二级列：如果任何表头包含"二级"或"content_type"，则为双列模式
+  const hasL2 = headers.some(h => h && (h.includes('二级') || h.toLowerCase().includes('content_type')));
+  
+  // 识别版本列
   // 第一个列是描述列
   const versionPairs = [];
-  for (let i = 1; i < headers.length; i += 2) {
-    if (headers[i]) {
-      versionPairs.push({
-        l1Col: i,
-        l1Name: headers[i],
-        l2Col: i + 1 < headers.length ? i + 1 : -1,
-        l2Name: i + 1 < headers.length ? headers[i + 1] : '',
-      });
+  if (hasL2) {
+    // 双列模式: 一级列, 二级列 交替排列
+    for (let i = 1; i < headers.length; i += 2) {
+      if (headers[i]) {
+        versionPairs.push({
+          l1Col: i,
+          l1Name: headers[i],
+          l2Col: i + 1 < headers.length ? i + 1 : -1,
+          l2Name: i + 1 < headers.length ? headers[i + 1] : '',
+        });
+      }
+    }
+  } else {
+    // 单列模式: 每列都是一个独立的一级版本
+    for (let i = 1; i < headers.length; i++) {
+      if (headers[i]) {
+        versionPairs.push({
+          l1Col: i,
+          l1Name: headers[i],
+          l2Col: -1,
+          l2Name: '',
+        });
+      }
     }
   }
   
@@ -1033,7 +1050,7 @@ function parseData(text) {
     rows.push(row);
   }
   
-  return { headers, versionPairs, rows, totalCols: headers.length };
+  return { headers, versionPairs, rows, totalCols: headers.length, hasL2 };
 }
 
 // ============================================================
@@ -1041,7 +1058,7 @@ function parseData(text) {
 // ============================================================
 
 function generate(parsedData, newCode) {
-  const { rows, versionPairs } = parsedData;
+  const { rows, versionPairs, hasL2 } = parsedData;
   
   // 收集所有现有值（清理引号等特殊字符）
   const allExisting = new Set();
@@ -1098,7 +1115,7 @@ function generate(parsedData, newCode) {
     
     // 最终清理：确保生成的ID不含引号/特殊字符
     let cleanL1 = sanitizeID(generated.l1);
-    let cleanL2 = sanitizeID(generated.l2);
+    let cleanL2 = hasL2 ? sanitizeID(generated.l2) : '';
     
     // 强制保证唯一：即使生成函数漏检，这里兜底
     if (cleanL1) cleanL1 = guaranteeUnique(cleanL1, allExisting);
@@ -1111,7 +1128,7 @@ function generate(parsedData, newCode) {
     results.push({ desc, l1: cleanL1, l2: cleanL2, isDup: false });
   }
   
-  return { results, duplicateCount, newCode };
+  return { results, duplicateCount, newCode, hasL2 };
 }
 
 // ============================================================
@@ -1352,7 +1369,8 @@ function updateParsedInfo() {
   }
   $parsedInfo.classList.remove('has-warn');
   $parsedInfo.classList.add('show');
-  $parsedInfo.innerHTML = `已识别 <b>${parsed.versionPairs.length}</b> 个版本列对，<b>${parsed.rows.length}</b> 行数据。列: ${parsed.versionPairs.map(p => p.l1Name).join(' / ')}`;
+  const modeLabel = parsed.hasL2 ? '双列（一级+二级）' : '单列（仅一级）';
+  $parsedInfo.innerHTML = `已识别 <b>${parsed.versionPairs.length}</b> 个版本列，<b>${parsed.rows.length}</b> 行数据。模式: <b>${modeLabel}</b>。列: ${parsed.versionPairs.map(p => p.l1Name).join(' / ')}`;
 }
 
 // ===== 事件绑定 =====
@@ -1415,10 +1433,10 @@ $generateBtn.addEventListener('click', () => {
       }
       currentParsed = parsed;
       
-      const { results, duplicateCount } = generate(parsed, newCode);
-      currentResult = { results, newCode, parsed };
+      const { results, duplicateCount, hasL2 } = generate(parsed, newCode);
+      currentResult = { results, newCode, parsed, hasL2 };
       
-      renderTable(results, newCode);
+      renderTable(results, newCode, hasL2);
       
       // 显示重复警告
       if (duplicateCount > 0) {
@@ -1442,22 +1460,35 @@ $generateBtn.addEventListener('click', () => {
 });
 
 // 渲染结果表格
-function renderTable(results, newCode) {
-  const l2Header = newCode + '二级（默认 content_type）';
-  
-  let html = `<table><thead><tr>
-    <th style="min-width:200px">埋点说明</th>
-    <th style="min-width:180px" class="col-new-1">${newCode}</th>
-    <th style="min-width:280px" class="col-new-2">${l2Header}</th>
-  </tr></thead><tbody>`;
-  
-  for (const r of results) {
-    const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
-    html += `<tr>
-      <td>${escapeHtml(r.desc)}</td>
-      <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
-      <td class="col-new-2" ${dupClass}>${escapeHtml(r.l2)}</td>
-    </tr>`;
+function renderTable(results, newCode, hasL2) {
+  let html;
+  if (hasL2) {
+    const l2Header = newCode + '二级（默认 content_type）';
+    html = `<table><thead><tr>
+      <th style="min-width:200px">埋点说明</th>
+      <th style="min-width:180px" class="col-new-1">${newCode}</th>
+      <th style="min-width:280px" class="col-new-2">${l2Header}</th>
+    </tr></thead><tbody>`;
+    for (const r of results) {
+      const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
+      html += `<tr>
+        <td>${escapeHtml(r.desc)}</td>
+        <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
+        <td class="col-new-2" ${dupClass}>${escapeHtml(r.l2)}</td>
+      </tr>`;
+    }
+  } else {
+    html = `<table><thead><tr>
+      <th style="min-width:200px">埋点说明</th>
+      <th style="min-width:280px" class="col-new-1">${newCode}</th>
+    </tr></thead><tbody>`;
+    for (const r of results) {
+      const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
+      html += `<tr>
+        <td>${escapeHtml(r.desc)}</td>
+        <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
+      </tr>`;
+    }
   }
   
   html += '</tbody></table>';
@@ -1472,13 +1503,20 @@ function escapeHtml(s) {
 // 复制结果（只复制参数ID列，不含埋点说明列）
 $copyBtn.addEventListener('click', () => {
   if (!currentResult) return;
-  const { results, newCode } = currentResult;
-  const l2Header = newCode + '二级（默认 content_type）';
+  const { results, newCode, hasL2 } = currentResult;
   
-  // 生成Tab分隔的文本，只包含参数ID列
-  let text = `${newCode}\t${l2Header}\n`;
-  for (const r of results) {
-    text += `${r.l1}\t${r.l2}\n`;
+  let text;
+  if (hasL2) {
+    const l2Header = newCode + '二级（默认 content_type）';
+    text = `${newCode}\t${l2Header}\n`;
+    for (const r of results) {
+      text += `${r.l1}\t${r.l2}\n`;
+    }
+  } else {
+    text = `${newCode}\n`;
+    for (const r of results) {
+      text += `${r.l1}\n`;
+    }
   }
   
   navigator.clipboard.writeText(text).then(() => {
@@ -1498,17 +1536,26 @@ $copyBtn.addEventListener('click', () => {
 // 下载Excel (CSV格式，Excel可直接打开)
 $downloadBtn.addEventListener('click', () => {
   if (!currentResult) return;
-  const { results, newCode } = currentResult;
-  const l2Header = newCode + '二级（默认 content_type）';
+  const { results, newCode, hasL2 } = currentResult;
   
   // 生成CSV with BOM
   let csv = '\uFEFF'; // BOM for UTF-8
-  csv += `埋点说明,${newCode},${l2Header}\n`;
-  for (const r of results) {
-    const desc = (r.desc || '').replace(/"/g, '""');
-    const l1 = (r.l1 || '').replace(/"/g, '""');
-    const l2 = (r.l2 || '').replace(/"/g, '""');
-    csv += `"${desc}","${l1}","${l2}"\n`;
+  if (hasL2) {
+    const l2Header = newCode + '二级（默认 content_type）';
+    csv += `埋点说明,${newCode},${l2Header}\n`;
+    for (const r of results) {
+      const desc = (r.desc || '').replace(/"/g, '""');
+      const l1 = (r.l1 || '').replace(/"/g, '""');
+      const l2 = (r.l2 || '').replace(/"/g, '""');
+      csv += `"${desc}","${l1}","${l2}"\n`;
+    }
+  } else {
+    csv += `埋点说明,${newCode}\n`;
+    for (const r of results) {
+      const desc = (r.desc || '').replace(/"/g, '""');
+      const l1 = (r.l1 || '').replace(/"/g, '""');
+      csv += `"${desc}","${l1}"\n`;
+    }
   }
   
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
