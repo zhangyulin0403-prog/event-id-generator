@@ -546,9 +546,14 @@ function isEventName(str) {
   if (str.includes(',') || str.includes(' ') || str.includes('/')) return false;
   if (str === '无' || str === '/') return false;
   if (/^\d+$/.test(str)) return false; // 纯数字
-  if (/^[a-z0-9]{1,4}$/.test(str)) return false; // 太短的缩写
-  // 检测是否有大写字母在非首位置
-  return /[a-z][A-Z]/.test(str) || /^[A-Z][a-z]+[A-Z]/.test(str);
+  if (/^[a-z0-9]{1,4}$/i.test(str) && !/[a-z][A-Z]/.test(str)) return false; // 太短的纯字母数字
+  // camelCase: 小写后跟大写 (如 NativeUserTrack)
+  if (/[a-z][A-Z]/.test(str)) return true;
+  // 大写开头+小写+大写 (如 CloudSettingPull)
+  if (/^[A-Z][a-z]+[A-Z]/.test(str)) return true;
+  // 2+大写开头+小写 (如 FRPay, FRShow, FRClickView)
+  if (/^[A-Z]{2,}[a-z]+/.test(str) && str.length >= 4) return true;
+  return false;
 }
 
 // 检查是否为短缩写（全局配置参数）
@@ -736,7 +741,11 @@ function generateEventID(rowValues, allExistingSet, context) {
   // 如果是缩写类型
   if (isAbbreviation(baseValue) && !isEventName(baseValue)) {
     const newL1 = transformAbbreviation(baseValue, allExistingSet);
-    return { l1: newL1, l2: '' };
+    const oldL1 = l1Values.length > 1 ? l1Values[l1Values.length - 2] : baseValue;
+    const newL2 = l2Values.length > 0
+      ? generateSecondaryID(l2Values, allExistingSet, newL1, oldL1)
+      : '';
+    return { l1: newL1, l2: newL2 };
   }
   
   // 如果是事件名
@@ -752,7 +761,12 @@ function generateEventID(rowValues, allExistingSet, context) {
   
   // 其他类型：尝试缩写变换
   if (baseValue && !isSpecial(baseValue)) {
-    return { l1: transformAbbreviation(baseValue, allExistingSet), l2: '' };
+    const newL1 = transformAbbreviation(baseValue, allExistingSet);
+    const oldL1 = l1Values.length > 1 ? l1Values[l1Values.length - 2] : baseValue;
+    const newL2 = l2Values.length > 0
+      ? generateSecondaryID(l2Values, allExistingSet, newL1, oldL1)
+      : '';
+    return { l1: newL1, l2: newL2 };
   }
   
   return { l1: '', l2: '' };
