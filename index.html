@@ -304,8 +304,8 @@ tr:hover { background: #f8fafc; }
 </head>
 <body>
 <div class="container">
-  <h1>埋点事件ID生成器 <span style="font-size:14px;color:var(--primary);background:var(--primary-light);padding:2px 10px;border-radius:12px;">v2.0</span></h1>
-  <p class="subtitle">粘贴现有项目参数 → 输入新项目代号 → 自动生成不重复的事件ID（支持单列/双列自动识别）</p>
+  <h1>埋点事件ID生成器 <span style="font-size:14px;color:var(--primary);background:var(--primary-light);padding:2px 10px;border-radius:12px;">v3.0</span></h1>
+  <p class="subtitle">粘贴现有项目参数 → 输入新项目代号 → 自动生成不重复的事件ID（新包ID与任一旧包同事件ID相似度强制 ≤50%）</p>
 
   <div class="card">
     <div class="step-header">
@@ -331,6 +331,7 @@ tr:hover { background: #f8fafc; }
     <div class="features">
       <div class="feature">自动识别版本列</div>
       <div class="feature">智能同义词替换</div>
+      <div class="feature">相似度≤50%强校验</div>
       <div class="feature">全局重复检测</div>
       <div class="feature">一级/二级联动生成</div>
       <div class="feature">一键复制/下载Excel</div>
@@ -371,7 +372,7 @@ tr:hover { background: #f8fafc; }
   </div>
 
   <div class="footer">
-    埋点事件ID生成器 v1.0 — 自动化命名模式检测 + 同义词替换 + 重复校验
+    埋点事件ID生成器 v3.0 — 同义词替换 + 相似度≤50%校验 + 重复校验
   </div>
 </div>
 
@@ -419,6 +420,7 @@ const SYNONYMS = {
   // 清理
   'Clean': ['Sweep', 'Purge', 'Wash', 'Scrub', 'Clear', 'Sanitize'],
   'Sweep': ['Purge', 'Wash', 'Scrub', 'Clear', 'Clean', 'Sanitize'],
+  'Clear': ['Wash', 'Purge', 'Flush', 'Evict'],
   // 网络/数据
   'Data': ['Net', 'Network', 'Traffic', 'Usage', 'Info', 'Bandwidth'],
   'Traffic': ['Data', 'Net', 'Network', 'Usage', 'Bandwidth', 'Flow'],
@@ -504,6 +506,31 @@ const SYNONYMS = {
   'BatteryInfo': ['PowerInfo', 'EnergyInfo', 'ChargeInfo'],
   'AllFilesAsk': ['FullAccessAsk', 'TotalAccessAsk'],
   'AllFilesDone': ['FullAccessDone', 'TotalAccessDone'],
+  // 链路后缀词 — 用于后缀整体替换时降低相似度
+  'Trace': ['Span', 'Sweep', 'Beacon', 'Probe', 'Echo'],
+  'Log': ['Record', 'Ledger', 'Journal', 'Entry', 'Memo'],
+  'Trail': ['Route', 'Track', 'Course', 'Line'],
+  'Path': ['Pipeline', 'Route', 'Lane', 'Course'],
+  'Journey': ['Flow', 'Voyage', 'Trip', 'Passage'],
+  'Stream': ['Sink', 'Flow', 'Feed', 'Canal'],
+  'Pulse': ['Beat', 'Throb', 'Rhythm', 'Tempo'],
+  'Scope': ['Range', 'Reach', 'Span', 'Field'],
+  'Signal': ['Beacon', 'Cue', 'Ping', 'Flag'],
+  'Mark': ['Tag', 'Stamp', 'Badge', 'Pin'],
+  'Record': ['Ledger', 'Archive', 'Entry', 'File'],
+  'Link': ['Bridge', 'Chain', 'Knot', 'Tie'],
+  'Bridge': ['Link', 'Chain', 'Span', 'Arch'],
+  'Channel': ['Canal', 'Duct', 'Line', 'Way'],
+  'Beat': ['Pulse', 'Tempo', 'Rhythm', 'Tick'],
+  // 高频词补充
+  'Hub': ['Node', 'Junction', 'Anchor', 'Pivot'],
+  'Core': ['Shell', 'Inner', 'Base', 'Nucleus'],
+  'Base': ['Root', 'Ground', 'Bed', 'Basis'],
+  'Center': ['Middle', 'Nexus', 'Focus', 'Axis'],
+  'Gate': ['Guard', 'Filter', 'Portal', 'Latch'],
+  'Track': ['Trace', 'Trail', 'Path', 'Route'],
+  'Flow': ['Stream', 'Route', 'Course', 'Drift'],
+  'Route': ['Path', 'Course', 'Lane', 'Way'],
 };
 
 // 后缀轮转池 — 按顺序使用
@@ -511,6 +538,12 @@ const SUFFIX_POOL = ['Trace', 'Log', 'Trail', 'Path', 'Journey', 'Stream', 'Puls
 
 // 一级后缀池（用于替换 Flow/Route/Track 等）
 const PRIMARY_SUFFIXES = ['Trace', 'Log', 'Trail', 'Path', 'Journey', 'Stream', 'Pulse', 'Scope', 'Signal', 'Mark'];
+
+// 中性词库 — 同义词替换仍无法把相似度压到 50% 以下时使用，保证与旧包ID差异足够大
+const NEUTRAL_WORDS = ['Aurora', 'Vertex', 'Nimbus', 'Quartz', 'Cobalt', 'Ember', 'Sable', 'Lumen', 'Onyx', 'Zephyr',
+  'Falcon', 'Harbor', 'Ivory', 'Jade', 'Kestrel', 'Lagoon', 'Mosaic', 'Nova', 'Opal', 'Prism',
+  'Quill', 'Raven', 'Summit', 'Tundra', 'Umber', 'Vapor', 'Willow', 'Xenon', 'Yarrow', 'Zodiac',
+  'Atlas', 'Beacon', 'Cedar', 'Delta', 'Echo', 'Fjord', 'Glacier', 'Halo', 'Indigo', 'Jasper'];
 
 // ============================================================
 // 工具函数
@@ -540,7 +573,13 @@ function tokenize(str) {
 
 // 重组: ["Native", "User", "Track"] -> "NativeUserTrack"
 function detokenize(tokens) {
-  return tokens.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('');
+  // 去掉相邻重复词（例如 SweepClear → Clear + Clear）
+  const out = [];
+  for (const t of tokens) {
+    if (out.length > 0 && out[out.length - 1].toLowerCase() === t.toLowerCase()) continue;
+    out.push(t);
+  }
+  return out.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('');
 }
 
 // 检查是否为camelCase事件名（包含大写字母，长度>4）
@@ -601,95 +640,110 @@ function getNextSuffix(usedSuffixes) {
   return 'Trace' + (Math.floor(Math.random() * 90) + 10);
 }
 
-// 收集已使用的后缀
-function collectUsedSuffixes(values) {
-  const used = new Set();
-  for (const v of values) {
-    if (!v) continue;
-    const tokens = tokenize(v);
-    if (tokens.length > 0) {
-      const last = tokens[tokens.length - 1];
-      if (last.length > 2) used.add(last);
+// ============================================================
+// 相似度约束 — 新马甲包ID与任一旧包同事件ID的相似度必须 ≤ 50%
+// 相似度 = 1 - 编辑距离 / 较长字符串长度
+// ============================================================
+const MAX_SIMILARITY = 0.5;
+// 生成时的目标值（比硬性要求更严格，留出余量，避免出现"只改一两个字符"的临界结果）
+const TARGET_SIMILARITY = 0.4;
+
+// Levenshtein 编辑距离
+function levenshtein(a, b) {
+  a = a || ''; b = b || '';
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1), curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    const ca = a.charAt(i - 1);
+    for (let j = 1; j <= n; j++) {
+      const cost = ca === b.charAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
     }
+    const tmp = prev; prev = curr; curr = tmp;
   }
-  return used;
+  return prev[n];
 }
 
-// 短缩写变换 — 字母替换
-function transformAbbreviation(str, existingSet) {
+// 相似度（0~1）
+function similarity(a, b) {
+  if (!a || !b) return 0;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - levenshtein(a, b) / maxLen;
+}
+
+// 与一组参考ID的最大相似度
+function maxSimilarity(value, refs) {
+  let max = 0;
+  for (const r of refs) {
+    if (!r || r === value) continue;
+    const s = similarity(value, r);
+    if (s > max) max = s;
+  }
+  return max;
+}
+
+// 候选值是否可用：全局唯一 + 与同事件所有旧包ID相似度 ≤ 目标值
+function isAcceptableCandidate(candidate, allExistingSet, refs, limit) {
+  if (!candidate) return false;
+  if (allExistingSet.has(candidate)) return false;
+  const max = limit === undefined ? TARGET_SIMILARITY : limit;
+  return maxSimilarity(candidate, refs) <= max + 1e-9;
+}
+
+// 字母位移（保留大小写，非字母字符原样保留）
+function shiftLetters(str, offset) {
+  return str.replace(/[a-zA-Z]/g, ch => {
+    const base = ch >= 'a' ? 97 : 65;
+    return String.fromCharCode(base + ((ch.charCodeAt(0) - base + offset) % 26 + 26) % 26);
+  });
+}
+
+// 短缩写变换 — 保持原风格（前缀+下划线 / 全小写），生成与旧包相似度 ≤50% 的新参数名
+// refs: 同一事件在旧包中的全部参数ID（用于相似度校验）
+function transformAbbreviation(str, existingSet, refs) {
   if (!str) return str;
-  // 下划线风格 (如 ps_fb_gy -> cx_fb_attr)
-  if (str.includes('_')) {
-    const parts = str.split('_');
-    const prefixes = ['cx', 'dx', 'ex', 'fx', 'gx', 'hx', 'tx', 'nx', 'px', 'rx', 'sx', 'vx', 'wx', 'bx', 'kx', 'mx', 'qx', 'yx', 'zx', 'ax', 'jx', 'lx', 'ox', 'ix', 'ux'];
-    
-    // 策略1: 替换前缀
-    for (const pre of prefixes) {
-      if (pre !== parts[0]) {
-        const candidate = pre + '_' + parts.slice(1).join('_');
-        if (!existingSet.has(candidate) && candidate !== str) return candidate;
+  const refsArr = refs || [];
+  const hasUnderscore = str.includes('_');
+  const parts = hasUnderscore ? str.split('_') : [str];
+  const prefixes = ['rl', 'vk', 'qz', 'jw', 'hn', 'tm', 'yd', 'bx', 'fx', 'gx', 'hx', 'nx', 'px', 'sx', 'vx', 'wx', 'kx', 'mx', 'qx', 'yx', 'zx'];
+
+  // 策略1: 词干整体字母位移 + 替换前缀（位移量相同 → 同族参数之间的对应关系不会丢失）
+  for (let offset = 2; offset <= 25; offset++) {
+    const newParts = parts.map((p, idx) => {
+      if (hasUnderscore && idx === 0 && p.length <= 3) {
+        return prefixes[(offset + 1) % prefixes.length];
       }
-    }
-    
-    // 策略2: 在最后一段插入字母
-    const lastPart = parts[parts.length - 1];
-    const midIdx = Math.floor(lastPart.length / 2);
-    for (const c of 'aeiouxyz') {
-      const newLast = lastPart.slice(0, midIdx) + c + lastPart.slice(midIdx);
-      const candidate = parts.slice(0, -1).join('_') + '_' + newLast;
-      if (!existingSet.has(candidate) && candidate !== str) return candidate;
-    }
-    
-    // 策略3: 替换最后一段的元音
-    for (const [from, to] of [['a','e'],['e','i'],['i','o'],['o','u'],['s','z'],['t','d']]) {
-      if (lastPart.includes(from)) {
-        const newLast = lastPart.replace(from, to);
-        const candidate = parts.slice(0, -1).join('_') + '_' + newLast;
-        if (!existingSet.has(candidate) && candidate !== str) return candidate;
-      }
-    }
-    
-    // 策略4: 添加数字后缀到最后一段
-    for (let i = 2; i <= 99; i++) {
-      const candidate = parts.slice(0, -1).join('_') + '_' + lastPart + i;
-      if (!existingSet.has(candidate)) return candidate;
-    }
-    
-    // 最终兜底
-    return guaranteeUnique(str, existingSet);
+      return shiftLetters(p, offset);
+    });
+    const candidate = newParts.join('_');
+    if (candidate !== str && isAcceptableCandidate(candidate, existingSet, refsArr)) return candidate;
   }
-  
-  // 纯小写缩写 — 字母替换
-  const replacements = [
-    ['a', 'e'], ['e', 'i'], ['i', 'o'], ['o', 'u'], ['u', 'a'],
-    ['s', 'z'], ['t', 'd'], ['r', 't'], ['n', 'm'], ['l', 'r'],
-    ['p', 'b'], ['f', 'v'], ['w', 'v'],
-  ];
-  
-  // 尝试替换元音
-  let result = str;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const idx = attempt % replacements.length;
-    const [from, to] = replacements[idx];
-    if (result.includes(from)) {
-      result = result.replace(from, to);
-      if (result !== str && !existingSet.has(result)) return result;
-    }
+
+  // 策略2: 保持风格随机生成新词干
+  const stemLen = Math.max(5, Math.min(10, str.replace(/_/g, '').length));
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  for (let attempt = 0; attempt < 300; attempt++) {
+    let stem = '';
+    for (let i = 0; i < stemLen; i++) stem += alphabet[Math.floor(Math.random() * alphabet.length)];
+    const candidate = hasUnderscore
+      ? prefixes[Math.floor(Math.random() * prefixes.length)] + '_' + stem
+      : stem;
+    if (isAcceptableCandidate(candidate, existingSet, refsArr)) return candidate;
   }
-  
-  // 如果还是重复，尝试在中间插入字母
-  const midIdx = Math.floor(str.length / 2);
-  for (const c of 'aeiouxyz') {
-    const candidate = str.slice(0, midIdx) + c + str.slice(midIdx);
-    if (!existingSet.has(candidate) && candidate !== str) return candidate;
+
+  // 最终兜底：随机 token，保证仍满足相似度约束
+  for (let attempt = 0; attempt < 60; attempt++) {
+    let token = '';
+    for (let i = 0; i < 4; i++) token += alphabet[Math.floor(Math.random() * alphabet.length)];
+    const candidate = (hasUnderscore ? prefixes[attempt % prefixes.length] + '_' : '') + token;
+    if (isAcceptableCandidate(candidate, existingSet, refsArr)) return candidate;
   }
-  
-  // 最后手段：添加后缀
-  for (let i = 1; i <= 99; i++) {
-    const candidate = str + i;
-    if (!existingSet.has(candidate)) return candidate;
-  }
-  return guaranteeUnique(str + '_new', existingSet);
+  return guaranteeUnique(str, existingSet);
 }
 
 // 生成随机 codetoken
@@ -743,7 +797,7 @@ function generateEventID(rowValues, allExistingSet, context) {
   
   // 如果是缩写类型
   if (isAbbreviation(baseValue) && !isEventName(baseValue)) {
-    const newL1 = transformAbbreviation(baseValue, allExistingSet);
+    const newL1 = transformAbbreviation(baseValue, allExistingSet, l1Values.map(sanitizeID));
     const oldL1 = l1Values.length > 1 ? l1Values[l1Values.length - 2] : baseValue;
     const newL2 = l2Values.length > 0
       ? generateSecondaryID(l2Values, allExistingSet, newL1, oldL1)
@@ -764,7 +818,7 @@ function generateEventID(rowValues, allExistingSet, context) {
   
   // 其他类型：尝试缩写变换
   if (baseValue && !isSpecial(baseValue)) {
-    const newL1 = transformAbbreviation(baseValue, allExistingSet);
+    const newL1 = transformAbbreviation(baseValue, allExistingSet, l1Values.map(sanitizeID));
     const oldL1 = l1Values.length > 1 ? l1Values[l1Values.length - 2] : baseValue;
     const newL2 = l2Values.length > 0
       ? generateSecondaryID(l2Values, allExistingSet, newL1, oldL1)
@@ -778,191 +832,148 @@ function generateEventID(rowValues, allExistingSet, context) {
 function generatePrimaryEventID(existingValues, allExistingSet) {
   const baseValue = existingValues[existingValues.length - 1];
   const tokens = tokenize(baseValue);
-  
+
   if (tokens.length === 0) return baseValue;
-  
-  // 收集已使用的后缀
-  const usedSuffixes = collectUsedSuffixes(existingValues);
-  
-  // 策略1: 替换后缀 + 替换前缀
-  for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
-    const newSuffix = SUFFIX_POOL[suffixIdx];
-    
-    // 替换第一个token（前缀）
-    const firstToken = tokens[0];
-    const firstSynonyms = getSynonyms(firstToken);
-    
-    for (const syn of firstSynonyms) {
-      const newTokens = [...tokens];
-      newTokens[0] = syn;
-      // 替换最后一个token（后缀）
-      if (tokens.length > 1) {
-        newTokens[newTokens.length - 1] = newSuffix;
-      }
-      const candidate = detokenize(newTokens);
-      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
-        return candidate;
-      }
-    }
-    
-    // 也尝试只替换后缀
-    if (tokens.length > 1) {
-      const newTokens = [...tokens];
-      newTokens[newTokens.length - 1] = newSuffix;
-      const candidate = detokenize(newTokens);
-      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
-        return candidate;
-      }
-    }
-  }
-  
-  // 策略2: 替换多个token
-  for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
-    const newSuffix = SUFFIX_POOL[suffixIdx];
-    const newTokens = [...tokens];
-    
-    // 替换所有有同义词的token
-    for (let i = 0; i < newTokens.length; i++) {
-      const syns = getSynonyms(newTokens[i]);
-      if (syns.length > 0) {
-        newTokens[i] = syns[Math.floor(Math.random() * syns.length)];
-      }
-    }
-    // 替换后缀
-    if (newTokens.length > 1) {
-      newTokens[newTokens.length - 1] = newSuffix;
-    }
-    const candidate = detokenize(newTokens);
-    if (!allExistingSet.has(candidate) && candidate !== baseValue) {
-      return candidate;
-    }
-  }
-  
-  // 策略3: 使用后缀池 + 随机组合
-  for (let i = 0; i < 200; i++) {
-    const newTokens = [...tokens];
-    // 随机替换
-    for (let j = 0; j < newTokens.length; j++) {
-      const syns = getSynonyms(newTokens[j]);
-      if (syns.length > 0 && Math.random() > 0.3) {
-        newTokens[j] = syns[Math.floor(Math.random() * syns.length)];
-      }
-    }
-    // 添加/替换后缀
-    const newSuffix = SUFFIX_POOL[Math.floor(Math.random() * SUFFIX_POOL.length)];
+
+  // 相似度参考集合：同一事件在所有旧包中的ID
+  const refs = existingValues.map(v => sanitizeID(v)).filter(Boolean);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const tried = new Set(); // 去重，避免反复校验同一候选值
+
+  // 策略1: 逐token同义词替换 + 新后缀（保持语义，同时把相似度压到 50% 以下）
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const newTokens = tokens.map(t => {
+      const syns = getSynonyms(t);
+      return syns.length > 0 ? pick(syns) : t;
+    });
+    const newSuffix = pick(SUFFIX_POOL);
     if (newTokens.length > 1) {
       newTokens[newTokens.length - 1] = newSuffix;
     } else {
       newTokens.push(newSuffix);
     }
     const candidate = detokenize(newTokens);
-    if (!allExistingSet.has(candidate)) {
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    if (candidate !== baseValue && isAcceptableCandidate(candidate, allExistingSet, refs)) {
       return candidate;
     }
   }
-  
-  // 最终兜底：添加数字后缀
-  for (let i = 1; i <= 99; i++) {
-    const candidate = baseValue + 'V' + i;
-    if (!allExistingSet.has(candidate)) return candidate;
+
+  // 策略2: 中性词 + 后缀（同义词替换无法达标时使用，确保与旧包差异足够大）
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const candidate = detokenize([pick(NEUTRAL_WORDS), pick(SUFFIX_POOL)]);
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    if (isAcceptableCandidate(candidate, allExistingSet, refs)) return candidate;
   }
-  
-  return guaranteeUnique(baseValue + '_gen', allExistingSet);
+
+  // 策略3: 中性词 + 中性词 + 后缀
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const candidate = detokenize([pick(NEUTRAL_WORDS), pick(NEUTRAL_WORDS), pick(SUFFIX_POOL)]);
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    if (isAcceptableCandidate(candidate, allExistingSet, refs)) return candidate;
+  }
+
+  // 最终兜底
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const candidate = detokenize([pick(NEUTRAL_WORDS), pick(NEUTRAL_WORDS)]);
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    if (isAcceptableCandidate(candidate, allExistingSet, refs)) return candidate;
+  }
+  return guaranteeUnique(baseValue + 'Gen', allExistingSet);
 }
 
 function generateSecondaryID(existingValues, allExistingSet, newL1, oldL1) {
   if (existingValues.length === 0) return '';
   const baseValue = existingValues[existingValues.length - 1];
-  
+
   // 如果是content_type列表 (如 "a1,a2,a3,...")
   if (baseValue.startsWith('a1,') || baseValue.includes(',a2,')) {
     return baseValue; // 保持不变
   }
-  
+
+  // 相似度参考集合：同一事件在所有旧包中的二级ID
+  const refs = existingValues.map(v => sanitizeID(v)).filter(Boolean);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const tried = new Set(); // 去重，避免反复校验同一候选值
+
   // 如果是事件名
   if (isEventName(baseValue)) {
     const tokens = tokenize(baseValue);
-    
-    // 策略1: 如果有新一级和旧一级，直接替换前缀
+
+    // 策略1: 用新一级替换旧一级前缀（一级/二级联动，保持结构）
     if (newL1 && oldL1 && baseValue.startsWith(oldL1)) {
-      const suffix = baseValue.substring(oldL1.length);
-      // 去掉旧后缀中可能的 Core
-      const candidate = newL1 + suffix;
-      if (!allExistingSet.has(candidate) && candidate !== baseValue) {
+      const candidate = newL1 + baseValue.substring(oldL1.length);
+      if (candidate !== baseValue && isAcceptableCandidate(candidate, allExistingSet, refs)) {
         return candidate;
       }
     }
-    
-    // 策略2: 用新一级 + 旧二级的动作部分
-    if (newL1) {
-      // 尝试用新一级替换前几个token
-      const newL1Tokens = tokenize(newL1);
-      // 找到二级中与一级匹配的前缀长度
-      let matchLen = 0;
-      for (let i = 0; i < Math.min(tokens.length, newL1Tokens.length); i++) {
-        // 模糊匹配（同义词也算匹配）
-        const t = tokens[i].toLowerCase();
-        const nt = newL1Tokens[i].toLowerCase();
-        if (t === nt) {
-          matchLen = i + 1;
-        } else {
-          // 检查是否是同义词
-          const syns = getSynonyms(tokens[i]);
-          if (syns.includes(newL1Tokens[i]) || getSynonyms(newL1Tokens[i]).includes(tokens[i])) {
-            matchLen = i + 1;
-          } else {
-            break;
+
+    // 策略2: 新一级 + 动作部分同义词替换
+    if (newL1 && oldL1 && baseValue.startsWith(oldL1)) {
+      const actionTokens = tokenize(baseValue.substring(oldL1.length));
+      if (actionTokens.length > 0) {
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const newAction = actionTokens.map(t => {
+            const syns = getSynonyms(t);
+            return syns.length > 0 ? pick(syns) : t;
+          });
+          const candidate = newL1 + detokenize(newAction);
+          if (tried.has(candidate)) continue;
+          tried.add(candidate);
+          if (candidate !== baseValue && isAcceptableCandidate(candidate, allExistingSet, refs)) {
+            return candidate;
           }
         }
       }
-      if (matchLen > 0) {
-        const remainingTokens = tokens.slice(matchLen);
-        const candidate = newL1 + remainingTokens.map(t => t.charAt(0).toUpperCase() + t.slice(1)).join('');
-        if (!allExistingSet.has(candidate) && candidate !== baseValue) {
-          return candidate;
-        }
-      }
-      // 新一级 + 最后一个token
-      if (tokens.length > 0) {
-        const lastToken = tokens[tokens.length - 1];
-        const candidate = newL1 + lastToken;
-        if (!allExistingSet.has(candidate)) return candidate;
-      }
     }
-    
-    // 策略3: 同义词替换
-    for (let suffixIdx = 0; suffixIdx < SUFFIX_POOL.length; suffixIdx++) {
-      const newSuffix = SUFFIX_POOL[suffixIdx];
-      const newTokens = [...tokens];
-      if (tokens.length > 1) {
-        const firstSyns = getSynonyms(tokens[0]);
-        for (const syn of firstSyns) {
-          newTokens[0] = syn;
-          const candidate = detokenize(newTokens);
-          if (!allExistingSet.has(candidate) && candidate !== baseValue) return candidate;
-        }
-      }
-    }
-    
-    // 策略4: 随机尝试
-    for (let i = 0; i < 200; i++) {
-      const newTokens = [...tokens];
-      for (let j = 0; j < newTokens.length; j++) {
-        const syns = getSynonyms(newTokens[j]);
-        if (syns.length > 0 && Math.random() > 0.3) {
-          newTokens[j] = syns[Math.floor(Math.random() * syns.length)];
-        }
+
+    // 策略3: 整体同义词替换 + 新后缀
+    for (let attempt = 0; attempt < 250; attempt++) {
+      const newTokens = tokens.map(t => {
+        const syns = getSynonyms(t);
+        return syns.length > 0 ? pick(syns) : t;
+      });
+      if (newTokens.length > 1) {
+        newTokens[newTokens.length - 1] = pick(SUFFIX_POOL);
+      } else {
+        newTokens.push(pick(SUFFIX_POOL));
       }
       const candidate = detokenize(newTokens);
-      if (!allExistingSet.has(candidate)) return candidate;
+      if (tried.has(candidate)) continue;
+      tried.add(candidate);
+      if (candidate !== baseValue && isAcceptableCandidate(candidate, allExistingSet, refs)) {
+        return candidate;
+      }
+    }
+
+    // 策略4: 新一级 + 中性词 + 后缀
+    if (newL1) {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const candidate = newL1 + pick(NEUTRAL_WORDS) + pick(SUFFIX_POOL);
+        if (tried.has(candidate)) continue;
+        tried.add(candidate);
+        if (isAcceptableCandidate(candidate, allExistingSet, refs)) return candidate;
+      }
+    }
+
+    // 策略5: 中性词 + 中性词 + 后缀
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const candidate = pick(NEUTRAL_WORDS) + pick(NEUTRAL_WORDS) + pick(SUFFIX_POOL);
+      if (tried.has(candidate)) continue;
+      tried.add(candidate);
+      if (isAcceptableCandidate(candidate, allExistingSet, refs)) return candidate;
     }
   }
-  
+
   // 缩写类型
   if (isAbbreviation(baseValue)) {
-    return transformAbbreviation(baseValue, allExistingSet);
+    return transformAbbreviation(baseValue, allExistingSet, refs);
   }
-  
+
   return guaranteeUnique(baseValue, allExistingSet);
 }
 
@@ -1081,6 +1092,8 @@ function generate(parsedData, newCode) {
   
   const results = [];
   let duplicateCount = 0;
+  let maxSim = 0;
+  let simViolations = 0;
   
   // 跟踪上一个有一级ID的行，用于合并单元格续行的二级ID生成
   let genContext = { lastNewL1: null, lastOldL1: null };
@@ -1099,7 +1112,7 @@ function generate(parsedData, newCode) {
     
     // 全局配置参数标题行
     if (desc === '全局配置参数' || desc === 'adjust上报埋点' || desc === '广告位+类型' || desc === 'scene_name') {
-      results.push({ desc, l1: '', l2: '', special: true });
+      results.push({ desc, l1: '', l2: '', special: true, sim: 0 });
       // 特殊行重置上下文
       genContext = { lastNewL1: null, lastOldL1: null };
       continue;
@@ -1128,10 +1141,19 @@ function generate(parsedData, newCode) {
     if (cleanL1) allExisting.add(cleanL1);
     if (cleanL2) allExisting.add(cleanL2);
     
-    results.push({ desc, l1: cleanL1, l2: cleanL2, isDup: false });
+    // 计算与旧包同事件ID的最大相似度（用于结果校验/展示）
+    const l1Refs = row.versions.map(v => sanitizeID(v.l1)).filter(v => v && !isSpecial(v));
+    const l2Refs = row.versions.map(v => sanitizeID(v.l2)).filter(v => v && !isSpecial(v));
+    let sim = 0;
+    if (cleanL1) sim = Math.max(sim, maxSimilarity(cleanL1, l1Refs));
+    if (cleanL2) sim = Math.max(sim, maxSimilarity(cleanL2, l2Refs));
+    if (sim > maxSim) maxSim = sim;
+    if (sim > MAX_SIMILARITY + 1e-9) simViolations++;
+    
+    results.push({ desc, l1: cleanL1, l2: cleanL2, isDup: false, sim });
   }
   
-  return { results, duplicateCount, newCode, hasL2 };
+  return { results, duplicateCount, newCode, hasL2, maxSim, simViolations };
 }
 
 // ============================================================
@@ -1447,7 +1469,7 @@ $generateBtn.addEventListener('click', () => {
       
       currentParsed = parsed;
       
-      const { results, duplicateCount, hasL2 } = generate(parsed, newCode);
+      const { results, duplicateCount, hasL2, maxSim, simViolations } = generate(parsed, newCode);
       currentResult = { results, newCode, parsed, hasL2 };
       
       // 检查生成结果
@@ -1460,18 +1482,21 @@ $generateBtn.addEventListener('click', () => {
       
       renderTable(results, newCode, hasL2);
       
-      // 显示重复警告
-      if (duplicateCount > 0) {
+      // 显示重复/相似度警告
+      if (duplicateCount > 0 || simViolations > 0) {
         $dupWarn.classList.add('show');
-        $dupWarn.textContent = `有 ${duplicateCount} 个生成值与现有数据重复，建议手动调整。`;
+        const msgs = [];
+        if (duplicateCount > 0) msgs.push(`有 ${duplicateCount} 个生成值与现有数据重复`);
+        if (simViolations > 0) msgs.push(`有 ${simViolations} 个生成值与旧包同事件ID相似度超过 50%`);
+        $dupWarn.textContent = msgs.join('；') + '，建议手动调整。';
       } else {
         $dupWarn.classList.remove('show');
       }
       
       const modeLabel = hasL2 ? '双列' : '单列';
-      $genStats.textContent = `共生成 ${validCount} 个值，0 个重复（${modeLabel}模式）`;
+      $genStats.textContent = `共生成 ${validCount} 个值，0 个重复，与旧包同事件ID最高相似度 ${Math.round(maxSim * 100)}%（${modeLabel}模式）`;
       $resultSection.classList.add('show');
-      showToast(`生成完成：${validCount} 个值（${modeLabel}模式）`);
+      showToast(`生成完成：${validCount} 个值，最高相似度 ${Math.round(maxSim * 100)}%`);
     } catch (e) {
       console.error(e);
       showToast('生成失败: ' + e.message);
@@ -1485,6 +1510,15 @@ $generateBtn.addEventListener('click', () => {
 
 // 渲染结果表格
 function renderTable(results, newCode, hasL2) {
+  const simCell = (r) => {
+    if (!r.sim) return '<td style="color:var(--text-secondary)">-</td>';
+    const pct = Math.round(r.sim * 100);
+    const style = r.sim > MAX_SIMILARITY + 1e-9
+      ? 'color:var(--danger);font-weight:700'
+      : 'color:var(--success);font-weight:600';
+    return `<td style="${style}">${pct}%</td>`;
+  };
+
   let html;
   if (hasL2) {
     const l2Header = newCode + '二级（默认 content_type）';
@@ -1492,6 +1526,7 @@ function renderTable(results, newCode, hasL2) {
       <th style="min-width:200px">埋点说明</th>
       <th style="min-width:180px" class="col-new-1">${newCode}</th>
       <th style="min-width:280px" class="col-new-2">${l2Header}</th>
+      <th style="min-width:110px">与旧包最大相似度</th>
     </tr></thead><tbody>`;
     for (const r of results) {
       const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
@@ -1499,18 +1534,21 @@ function renderTable(results, newCode, hasL2) {
         <td>${escapeHtml(r.desc)}</td>
         <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
         <td class="col-new-2" ${dupClass}>${escapeHtml(r.l2)}</td>
+        ${simCell(r)}
       </tr>`;
     }
   } else {
     html = `<table><thead><tr>
       <th style="min-width:200px">埋点说明</th>
       <th style="min-width:280px" class="col-new-1">${newCode}</th>
+      <th style="min-width:110px">与旧包最大相似度</th>
     </tr></thead><tbody>`;
     for (const r of results) {
       const dupClass = r.isDup ? 'style="color:var(--danger)"' : '';
       html += `<tr>
         <td>${escapeHtml(r.desc)}</td>
         <td class="col-new-1" ${dupClass}>${escapeHtml(r.l1)}</td>
+        ${simCell(r)}
       </tr>`;
     }
   }
